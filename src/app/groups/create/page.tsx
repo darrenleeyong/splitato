@@ -102,6 +102,7 @@ export default function CreateGroupPage() {
         .single()
 
       if (groupError) {
+        console.error("Group insert error:", groupError)
         if (groupError.message.includes("group_code")) {
           const newCode = generateGroupCode()
           const { data: retryGroup, error: retryError } = await supabase
@@ -119,7 +120,8 @@ export default function CreateGroupPage() {
             .single()
 
           if (retryError) {
-            toast.error(retryError.message)
+            console.error("Retry insert error:", retryError)
+            toast.error(retryError.message || JSON.stringify(retryError))
             setLoading(false)
             return
           }
@@ -129,7 +131,7 @@ export default function CreateGroupPage() {
           setLoading(false)
           return
         }
-        toast.error(groupError.message)
+        toast.error(groupError.message || JSON.stringify(groupError))
         setLoading(false)
         return
       }
@@ -144,7 +146,8 @@ export default function CreateGroupPage() {
           })
 
         if (memberError) {
-          toast.error(memberError.message)
+          console.error("Member insert error:", memberError)
+          toast.error(memberError.message || JSON.stringify(memberError))
           setLoading(false)
           return
         }
@@ -154,7 +157,8 @@ export default function CreateGroupPage() {
       router.push(`/groups/${group.id}`)
       router.refresh()
     } catch (error) {
-      toast.error("Failed to create group")
+      console.error("Create group error:", error)
+      toast.error(error instanceof Error ? error.message : "Failed to create group")
     } finally {
       setLoading(false)
     }

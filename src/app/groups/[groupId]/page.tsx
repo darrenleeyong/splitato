@@ -86,15 +86,15 @@ export default function GroupDashboardPage() {
   if (!isPinVerified(groupId)) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
+        <Card className="w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
           <CardHeader>
-            <CardTitle>Enter Group PIN</CardTitle>
-            <CardDescription>Enter the 4-digit PIN to access this group</CardDescription>
+            <CardTitle className="text-gray-900 dark:text-white">Enter Group PIN</CardTitle>
+            <CardDescription className="dark:text-gray-400">Enter the 4-digit PIN to access this group</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handlePinVerify} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="pin">PIN</Label>
+                <Label htmlFor="pin" className="text-gray-900 dark:text-white">PIN</Label>
                 <Input
                   id="pin"
                   type="password"
@@ -106,13 +106,14 @@ export default function GroupDashboardPage() {
                   onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 4))}
                   required
                   autoFocus
+                  className="dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder:text-gray-400"
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={verifyingPin}>
+              <Button type="submit" className="w-full bg-[#1A1A1A] hover:bg-[#2D2D2D] dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200" disabled={verifyingPin}>
                 {verifyingPin ? "Verifying..." : "Verify PIN"}
               </Button>
               <div className="text-center">
-                <Button variant="link" onClick={() => router.push("/")}>
+                <Button variant="link" onClick={() => router.push("/")} className="dark:text-gray-300">
                   <ArrowLeft className="mr-2 h-4 w-4" />
                   Back to Home
                 </Button>
@@ -126,8 +127,8 @@ export default function GroupDashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Loading...</p>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+        <p className="text-gray-500 dark:text-gray-400">Loading...</p>
       </div>
     )
   }
@@ -137,17 +138,14 @@ export default function GroupDashboardPage() {
   members.forEach(m => balances[m.id] = 0)
 
   expenses.forEach(expense => {
-    // Add what payer paid to their balance (positive = owed money)
     balances[expense.payer_id] = (balances[expense.payer_id] || 0) + Number(expense.amount)
   })
 
   expenseSplits.forEach(split => {
-    // Subtract what each person owes (negative = owes money)
     balances[split.member_id] = (balances[split.member_id] || 0) - Number(split.amount)
   })
 
   settlements.forEach(settlement => {
-    // Sender paid receiver
     balances[settlement.sender_id] = (balances[settlement.sender_id] || 0) - Number(settlement.amount)
     balances[settlement.receiver_id] = (balances[settlement.receiver_id] || 0) + Number(settlement.amount)
   })
@@ -170,46 +168,54 @@ export default function GroupDashboardPage() {
   const totalSpent = expenses.reduce((sum, e) => sum + Number(e.amount), 0)
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      <header className="bg-white border-b sticky top-0 z-10">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors">
+      <header className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4">
             <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Link href="/">
-                <Button variant="ghost" size="sm" className="p-0 h-8 w-8">
+              <Link href="/groups">
+                <Button variant="ghost" size="sm" className="p-0 h-8 w-8 dark:text-gray-100">
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
               </Link>
               <div>
-                <h1 className="text-xl font-bold">{group?.name}</h1>
-                <p className="text-sm text-gray-500">
+                <h1 className="text-xl font-bold text-gray-900 dark:text-white">{group?.name}</h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
                   {members.length} member{members.length !== 1 ? "s" : ""} · {getCurrencySymbol(group?.default_currency || "USD")}{totalSpent.toFixed(2)} total
                 </p>
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowOriginalCurrency(!showOriginalCurrency)}
-            >
-              {showOriginalCurrency ? "Original" : "Default"}
-            </Button>
+            <div className="flex items-center gap-2">
+              {group?.group_code && (
+                <span className="text-sm text-gray-500 dark:text-gray-400 font-mono bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
+                  {group.group_code}
+                </span>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowOriginalCurrency(!showOriginalCurrency)}
+                className="dark:border-gray-600 dark:hover:bg-gray-800 dark:text-gray-200"
+              >
+                {showOriginalCurrency ? "Original" : "Default"}
+              </Button>
+            </div>
           </div>
         </div>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-6">
         <Tabs defaultValue="expenses" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="expenses" className="flex items-center gap-2">
+          <TabsList className="grid w-full grid-cols-3 bg-gray-100 dark:bg-gray-800">
+            <TabsTrigger value="expenses" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700 data-[state=active]:shadow-sm">
               <Receipt className="h-4 w-4" />
               <span className="hidden sm:inline">Expenses</span>
             </TabsTrigger>
-            <TabsTrigger value="balances" className="flex items-center gap-2">
+            <TabsTrigger value="balances" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700 data-[state=active]:shadow-sm">
               <Wallet className="h-4 w-4" />
               <span className="hidden sm:inline">Balances</span>
             </TabsTrigger>
-            <TabsTrigger value="settings" className="flex items-center gap-2">
+            <TabsTrigger value="settings" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700 data-[state=active]:shadow-sm">
               <Settings className="h-4 w-4" />
               <span className="hidden sm:inline">Settings</span>
             </TabsTrigger>
@@ -217,9 +223,9 @@ export default function GroupDashboardPage() {
 
           <TabsContent value="expenses" className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold">Expenses</h2>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Expenses</h2>
               <Link href={`/groups/${groupId}/expense/add`}>
-                <Button size="sm">
+                <Button size="sm" className="bg-[#1A1A1A] hover:bg-[#2D2D2D] dark:bg-white dark:text-gray-900">
                   <Plus className="mr-2 h-4 w-4" />
                   Add Expense
                 </Button>
@@ -227,43 +233,44 @@ export default function GroupDashboardPage() {
             </div>
 
             {expenses.length === 0 ? (
-              <Card>
-                <CardContent className="py-8 text-center text-gray-500">
-                  No expenses yet. Add your first expense!
+              <Card className="dark:bg-gray-800 dark:border-gray-700">
+                <CardContent className="py-12 text-center">
+                  <Receipt className="h-12 w-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+                  <p className="text-gray-900 dark:text-white font-medium">No expenses yet</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Add your first expense!</p>
                 </CardContent>
               </Card>
             ) : (
               <div className="space-y-6">
                 {Object.entries(expensesByDate).map(([date, dayExpenses]) => {
                   const dayTotal = dayExpenses.reduce((sum, e) => sum + Number(e.amount), 0)
-                  const payer = members.find(m => m.id === dayExpenses[0].payer_id)
                   
                   return (
                     <div key={date}>
                       <div className="flex items-center justify-between mb-2">
-                        <p className="font-medium text-sm text-gray-500">
+                        <p className="font-medium text-sm text-gray-500 dark:text-gray-400">
                           {new Date(date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
                         </p>
-                        <p className="text-sm font-medium">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">
                           {getCurrencySymbol(group?.default_currency || "USD")}{dayTotal.toFixed(2)}
                         </p>
                       </div>
-                      <Card>
+                      <Card className="dark:bg-gray-800 dark:border-gray-700">
                         <CardContent className="p-0">
                           {dayExpenses.map((expense, idx) => {
                             const expensePayer = members.find(m => m.id === expense.payer_id)
                             return (
                               <div key={expense.id}>
                                 <Link href={`/groups/${groupId}/expense/${expense.id}/edit`}>
-                                  <div className="p-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer">
+                                  <div className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
                                     <div className="flex-1">
-                                      <p className="font-medium">{expense.description}</p>
-                                      <p className="text-sm text-gray-500">
+                                      <p className="font-medium text-gray-900 dark:text-white">{expense.description}</p>
+                                      <p className="text-sm text-gray-500 dark:text-gray-400">
                                         {expensePayer?.display_name || "Unknown"} paid · {expense.split_type}
                                       </p>
                                     </div>
                                     <div className="text-right">
-                                      <p className="font-semibold">
+                                      <p className="font-semibold text-gray-900 dark:text-white">
                                         {getCurrencySymbol(showOriginalCurrency ? expense.currency : group?.default_currency || "USD")}
                                         {Number(expense.amount).toFixed(2)}
                                         {showOriginalCurrency && expense.currency !== group?.default_currency && (
@@ -276,7 +283,7 @@ export default function GroupDashboardPage() {
                                     </div>
                                   </div>
                                 </Link>
-                                {idx < dayExpenses.length - 1 && <Separator />}
+                                {idx < dayExpenses.length - 1 && <Separator className="dark:border-gray-700" />}
                               </div>
                             )
                           })}
@@ -291,25 +298,25 @@ export default function GroupDashboardPage() {
 
           <TabsContent value="balances" className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold">Balances</h2>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Balances</h2>
               <Link href={`/groups/${groupId}/settle`}>
-                <Button size="sm">
+                <Button size="sm" className="bg-[#1A1A1A] hover:bg-[#2D2D2D] dark:bg-white dark:text-gray-900">
                   <DollarSign className="mr-2 h-4 w-4" />
                   Pay Balance
                 </Button>
               </Link>
             </div>
 
-            <Card>
+            <Card className="dark:bg-gray-800 dark:border-gray-700">
               <CardHeader>
-                <CardTitle>Net Balances</CardTitle>
-                <CardDescription>Positive = owed money · Negative = owes money</CardDescription>
+                <CardTitle className="text-gray-900 dark:text-white">Net Balances</CardTitle>
+                <CardDescription className="dark:text-gray-400">Positive = owed money · Negative = owes money</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {memberBalances.map(member => (
                   <div key={member.id} className="flex items-center justify-between">
-                    <span>{member.display_name}</span>
-                    <span className={`font-semibold ${member.balance >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    <span className="text-gray-900 dark:text-white">{member.display_name}</span>
+                    <span className={`font-semibold ${member.balance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                       {member.balance >= 0 ? "+" : ""}{getCurrencySymbol(group?.default_currency || "USD")}{member.balance.toFixed(2)}
                     </span>
                   </div>
@@ -318,9 +325,9 @@ export default function GroupDashboardPage() {
             </Card>
 
             {/* Simplified debts view */}
-            <Card>
+            <Card className="dark:bg-gray-800 dark:border-gray-700">
               <CardHeader>
-                <CardTitle>Who Owes Whom</CardTitle>
+                <CardTitle className="text-gray-900 dark:text-white">Who Owes Whom</CardTitle>
               </CardHeader>
               <CardContent>
                 {memberBalances.filter(m => m.balance < -0.01).map(debtor => {
@@ -333,11 +340,11 @@ export default function GroupDashboardPage() {
                   return (
                     <div key={`${debtor.id}-${creditor.id}`} className="flex items-center justify-between py-2">
                       <div className="flex items-center gap-2">
-                        <span>{debtor.display_name}</span>
+                        <span className="text-gray-900 dark:text-white">{debtor.display_name}</span>
                         <ArrowRight className="h-4 w-4 text-gray-400" />
-                        <span>{creditor.display_name}</span>
+                        <span className="text-gray-900 dark:text-white">{creditor.display_name}</span>
                       </div>
-                      <span className="font-semibold">
+                      <span className="font-semibold text-gray-900 dark:text-white">
                         {getCurrencySymbol(group?.default_currency || "USD")}{amount.toFixed(2)}
                       </span>
                     </div>
@@ -346,13 +353,13 @@ export default function GroupDashboardPage() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="dark:bg-gray-800 dark:border-gray-700">
               <CardHeader>
-                <CardTitle>Settlement History</CardTitle>
+                <CardTitle className="text-gray-900 dark:text-white">Settlement History</CardTitle>
               </CardHeader>
               <CardContent>
                 {settlements.length === 0 ? (
-                  <p className="text-gray-500 text-center py-4">No settlements yet</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-center py-4">No settlements yet</p>
                 ) : (
                   <div className="space-y-3">
                     {settlements.map(settlement => {
@@ -361,15 +368,15 @@ export default function GroupDashboardPage() {
                       return (
                         <div key={settlement.id} className="flex items-center justify-between">
                           <div className="text-sm">
-                            <span className="font-medium">{sender?.display_name}</span>
-                            <span className="text-gray-500"> paid </span>
-                            <span className="font-medium">{receiver?.display_name}</span>
+                            <span className="font-medium text-gray-900 dark:text-white">{sender?.display_name}</span>
+                            <span className="text-gray-500 dark:text-gray-400"> paid </span>
+                            <span className="font-medium text-gray-900 dark:text-white">{receiver?.display_name}</span>
                           </div>
                           <div className="text-right">
-                            <span className="font-semibold">
+                            <span className="font-semibold text-gray-900 dark:text-white">
                               {getCurrencySymbol(group?.default_currency || "USD")}{Number(settlement.amount).toFixed(2)}
                             </span>
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
                               {new Date(settlement.date).toLocaleDateString()}
                             </p>
                           </div>
@@ -383,12 +390,12 @@ export default function GroupDashboardPage() {
           </TabsContent>
 
           <TabsContent value="settings" className="space-y-6">
-            <h2 className="text-lg font-semibold">Group Settings</h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Group Settings</h2>
             
-            <Card>
+            <Card className="dark:bg-gray-800 dark:border-gray-700">
               <CardHeader>
-                <CardTitle>Members</CardTitle>
-                <CardDescription>Manage group members</CardDescription>
+                <CardTitle className="text-gray-900 dark:text-white">Members</CardTitle>
+                <CardDescription className="dark:text-gray-400">Manage group members</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {members.map(member => (
@@ -399,24 +406,24 @@ export default function GroupDashboardPage() {
                           {member.display_name.charAt(0).toUpperCase()}
                         </span>
                       </div>
-                      <span>{member.display_name}</span>
+                      <span className="text-gray-900 dark:text-white">{member.display_name}</span>
                     </div>
                     {group?.owner_id && (
-                      <Badge variant="outline">Member</Badge>
+                      <Badge variant="outline" className="dark:border-gray-600 dark:text-gray-300">Member</Badge>
                     )}
                   </div>
                 ))}
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="dark:bg-gray-800 dark:border-gray-700">
               <CardHeader>
-                <CardTitle>Group Info</CardTitle>
+                <CardTitle className="text-gray-900 dark:text-white">Group Info</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Default Currency</span>
-                  <span className="font-medium">{group?.default_currency}</span>
+                  <span className="text-gray-500 dark:text-gray-400">Default Currency</span>
+                  <span className="font-medium text-gray-900 dark:text-white">{group?.default_currency}</span>
                 </div>
               </CardContent>
             </Card>

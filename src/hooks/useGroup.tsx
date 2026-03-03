@@ -32,28 +32,68 @@ export function GroupProvider({ children }: { children: ReactNode }) {
       return
     }
 
+    console.log("Fetching groups for user:", user.id)
+
+    // Fetch groups where user is a member
     const { data: members, error: membersError } = await supabase
       .from("group_members")
       .select("group_id")
       .eq("user_id", user.id)
 
-    if (membersError || !members) {
+    if (membersError) {
+      console.error("Error fetching group members:", membersError)
       setGroups([])
       setLoading(false)
       return
     }
 
-    const groupIds = members.map(m => m.group_id)
-    const { data: groupsData, error: groupsError } = await supabase
+    // Also fetch groups where user is the owner
+    const { data: ownedGroups, error: ownedError } = await supabase
       .from("groups")
       .select("*")
-      .in("id", groupIds)
+      .eq("owner_id", user.id)
 
-    if (groupsError) {
-      setGroups([])
-    } else {
-      setGroups(groupsData || [])
+    if (ownedError) {
+      console.error("Error fetching owned groups:", ownedError)
     }
+
+    if ((!members || members.length === 0) && (!ownedGroups || ownedGroups.length === 0)) {
+      console.log("No groups found for user")
+      setGroups([])
+      setLoading(false)
+      return
+    }
+
+    // Combine group IDs from both queries
+    const memberGroupIds = members?.map(m => m.group_id) || []
+    const ownedGroupIds = ownedGroups?.map(g => g.id) || []
+    const allGroupIds = [...new Set([...memberGroupIds, ...ownedGroupIds])]
+    console.log("All Group IDs:", allGroupIds)
+
+    // If we already have owned groups, we can use them directly
+    let groupsData = ownedGroups || []
+
+    // If user is a member of additional groups, fetch those too
+    if (memberGroupIds.length > 0) {
+      const { data: memberGroups, error: memberGroupsError } = await supabase
+        .from("groups")
+        .select("*")
+        .in("id", memberGroupIds)
+
+      if (memberGroupsError) {
+        console.error("Error fetching member groups:", memberGroupsError)
+      } else if (memberGroups) {
+        // Merge and deduplicate
+        const allGroups = [...groupsData, ...memberGroups]
+        const uniqueGroups = allGroups.filter((group, index, self) => 
+          index === self.findIndex(g => g.id === group.id)
+        )
+        groupsData = uniqueGroups
+      }
+    }
+
+    console.log("Groups fetched:", groupsData)
+    setGroups(groupsData || [])
     setLoading(false)
   }
 
