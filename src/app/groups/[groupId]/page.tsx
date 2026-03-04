@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { 
   ArrowLeft, 
   Plus, 
@@ -19,11 +21,20 @@ import {
   Settings, 
   Receipt, 
   Wallet,
-  ArrowRight
+  ArrowRight,
+  Pencil,
+  Trash2,
+  UserPlus,
+  X,
+  Copy,
+  Check,
+  Shield,
+  Eye,
+  EyeOff
 } from "lucide-react"
 import { toast } from "sonner"
 import { useGroup } from "@/hooks/useGroup"
-import { getCurrencySymbol } from "@/lib/constants"
+import { getCurrencySymbol, CURRENCIES } from "@/lib/constants"
 import type { Group, GroupMember, Expense, ExpenseSplit, Settlement } from "@/lib/supabase/types"
 
 export default function GroupDashboardPage() {
@@ -42,6 +53,25 @@ export default function GroupDashboardPage() {
   const [settlements, setSettlements] = useState<Settlement[]>([])
   const [expenseSplits, setExpenseSplits] = useState<ExpenseSplit[]>([])
   const [showOriginalCurrency, setShowOriginalCurrency] = useState(false)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+
+  // Settings state
+  const [editingName, setEditingName] = useState(false)
+  const [nameInput, setNameInput] = useState("")
+  const [editingCurrency, setEditingCurrency] = useState(false)
+  const [currencyInput, setCurrencyInput] = useState("USD")
+  const [addingCurrency, setAddingCurrency] = useState(false)
+  const [showPin, setShowPin] = useState(false)
+  const [editingPin, setEditingPin] = useState(false)
+  const [pinInputNew, setPinInputNew] = useState("")
+  const [pinConfirmNew, setPinConfirmNew] = useState("")
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null)
+  const [memberNameInput, setMemberNameInput] = useState("")
+  const [isAddMemberOpen, setIsAddMemberOpen] = useState(false)
+  const [addMemberInput, setAddMemberInput] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [copiedCode, setCopiedCode] = useState(false)
+  const [isPeopleOpen, setIsPeopleOpen] = useState(false)
 
   useEffect(() => {
     if (isPinVerified(groupId)) {
@@ -53,6 +83,9 @@ export default function GroupDashboardPage() {
 
   const fetchGroupData = async () => {
     setLoading(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    setCurrentUserId(user?.id || null)
+
     const [groupRes, membersRes, expensesRes, settlementsRes, splitsRes] = await Promise.all([
       supabase.from("groups").select("*").eq("id", groupId).single(),
       supabase.from("group_members").select("*").eq("group_id", groupId),
@@ -66,8 +99,15 @@ export default function GroupDashboardPage() {
     setExpenses(expensesRes.data || [])
     setSettlements(settlementsRes.data || [])
     setExpenseSplits(splitsRes.data || [])
+    
+    if (groupRes.data) {
+      setNameInput(groupRes.data.name)
+      setCurrencyInput(groupRes.data.default_currency)
+    }
     setLoading(false)
   }
+
+  const isOwner = group?.owner_id === currentUserId
 
   const handlePinVerify = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -81,6 +121,179 @@ export default function GroupDashboardPage() {
       toast.error("Invalid PIN")
     }
     setVerifyingPin(false)
+  }
+
+  // Settings handlers
+  const handleUpdateGroupName = async () => {
+    if (!nameInput.trim()) {
+      toast.error("Group name is required")
+      return
+    }
+    setSaving(true)
+    const { error } = await supabase.from("groups").update({ name: nameInput.trim() }).eq("id", groupId)
+    if (error) {
+      toast.error(error.message)
+    } else {
+      toast.success("Group name updated")
+      setEditingName(false)
+      fetchGroupData()
+    }
+    setSaving(false)
+  }
+
+  const handleUpdateCurrency = async () => {
+    setSaving(true)
+    const { error } = await supabase.from("groups").update({ default_currency: currencyInput }).eq("id", groupId)
+    if (error) {
+      toast.error(error.message)
+    } else {
+      toast.success("Default currency updated")
+      setEditingCurrency(false)
+      fetchGroupData()
+    }
+    setSaving(false)
+  }
+
+  const handleAddCurrency = async (currency: string) => {
+    setSaving(true)
+    const updateData: Partial<Group> = {}
+    if (!group?.additional_currency_1) {
+      updateData.additional_currency_1 = currency
+    } else if (!group?.additional_currency_2) {
+      updateData.additional_currency_2 = currency
+    }
+    const { error } = await supabase.from("groups").update(updateData).eq("id", groupId)
+    if (error) {
+      toast.error(error.message)
+    } else {
+      toast.success("Currency added")
+      setAddingCurrency(false)
+      fetchGroupData()
+    }
+    setSaving(false)
+  }
+
+  const handleRemoveCurrency = async (field: "additional_currency_1" | "additional_currency_2") => {
+    setSaving(true)
+    const { error } = await supabase.from("groups").update({ [field]: null }).eq("id", groupId)
+    if (error) {
+      toast.error(error.message)
+    } else {
+      toast.success("Currency removed")
+      fetchGroupData()
+    }
+    setSaving(false)
+  }
+
+  const handleUpdatePin = async () => {
+    if (pinInputNew && pinInputNew.length !== 4) {
+      toast.error("PIN must be exactly 4 digits")
+      return
+    }
+    if (pinInputNew !== pinConfirmNew) {
+      toast.error("PINs do not match")
+      return
+    }
+    setSaving(true)
+    const { error } = await supabase.from("groups").update({ pin_code: pinInputNew || "" }).eq("id", groupId)
+    if (error) {
+      toast.error(error.message)
+    } else {
+      toast.success("PIN updated")
+      setEditingPin(false)
+      setPinInputNew("")
+      setPinConfirmNew("")
+      fetchGroupData()
+    }
+    setSaving(false)
+  }
+
+  const handleToggleSimplifyDebts = async () => {
+    setSaving(true)
+    const { error } = await supabase.from("groups").update({ simplify_debts: !group?.simplify_debts }).eq("id", groupId)
+    if (error) {
+      toast.error(error.message)
+    } else {
+      toast.success(group?.simplify_debts ? "Simplify debts disabled" : "Simplify debts enabled")
+      fetchGroupData()
+    }
+    setSaving(false)
+  }
+
+  const handleUpdateMemberName = async (memberId: string) => {
+    if (!memberNameInput.trim()) {
+      toast.error("Name is required")
+      return
+    }
+    setSaving(true)
+    const { error } = await supabase.from("group_members").update({ display_name: memberNameInput.trim() }).eq("id", memberId)
+    if (error) {
+      toast.error(error.message)
+    } else {
+      toast.success("Member name updated")
+      setEditingMemberId(null)
+      fetchGroupData()
+    }
+    setSaving(false)
+  }
+
+  const handleAddMember = async () => {
+    if (!addMemberInput.trim()) {
+      toast.error("Name is required")
+      return
+    }
+    setSaving(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    const { error } = await supabase.from("group_members").insert({
+      group_id: groupId,
+      user_id: user?.id || `temp_${Date.now()}`,
+      display_name: addMemberInput.trim()
+    })
+    if (error) {
+      toast.error(error.message)
+    } else {
+      toast.success("Member added")
+      setIsAddMemberOpen(false)
+      setAddMemberInput("")
+      fetchGroupData()
+    }
+    setSaving(false)
+  }
+
+  const handleRemoveMember = async (memberId: string) => {
+    const member = members.find(m => m.id === memberId)
+    if (!confirm(`Remove ${member?.display_name} from the group?`)) return
+    setSaving(true)
+    const { error } = await supabase.from("group_members").delete().eq("id", memberId)
+    if (error) {
+      toast.error(error.message)
+    } else {
+      toast.success("Member removed")
+      fetchGroupData()
+    }
+    setSaving(false)
+  }
+
+  const handleDeleteGroup = async () => {
+    if (!confirm("Are you sure you want to delete this group? This action cannot be undone.")) return
+    setSaving(true)
+    const { error } = await supabase.from("groups").delete().eq("id", groupId)
+    if (error) {
+      toast.error(error.message)
+    } else {
+      toast.success("Group deleted")
+      router.push("/")
+    }
+    setSaving(false)
+  }
+
+  const handleCopyCode = async () => {
+    if (group?.group_code) {
+      await navigator.clipboard.writeText(group.group_code)
+      setCopiedCode(true)
+      toast.success("Group code copied!")
+      setTimeout(() => setCopiedCode(false), 2000)
+    }
   }
 
   if (!isPinVerified(groupId)) {
@@ -179,18 +392,174 @@ export default function GroupDashboardPage() {
                 </Button>
               </Link>
               <div>
-                <h1 className="text-xl font-bold text-gray-900 dark:text-white">{group?.name}</h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-bold text-gray-900 dark:text-white">{group?.name}</h1>
+                  {group?.group_code && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs font-mono text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                      onClick={handleCopyCode}
+                      aria-label="Copy group code"
+                    >
+                      {copiedCode ? <Check className="h-3 w-3 text-green-500" /> : group.group_code}
+                    </Button>
+                  )}
+                </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   {members.length} member{members.length !== 1 ? "s" : ""} · {getCurrencySymbol(group?.default_currency || "USD")}{totalSpent.toFixed(2)} total
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {group?.group_code && (
-                <span className="text-sm text-gray-500 dark:text-gray-400 font-mono bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
-                  {group.group_code}
-                </span>
-              )}
+              <Dialog open={isPeopleOpen} onOpenChange={setIsPeopleOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="dark:border-gray-600 dark:hover:bg-gray-800 dark:text-gray-200"
+                  >
+                    <Users className="h-4 w-4 mr-1" />
+                    People
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="dark:bg-gray-800 dark:border-gray-700">
+                  <DialogHeader>
+                    <DialogTitle className="text-gray-900 dark:text-white">Group Members</DialogTitle>
+                    <DialogDescription className="dark:text-gray-400">
+                      Manage members and invite others
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label className="text-gray-900 dark:text-white">Invite Link</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          readOnly
+                          value={`${typeof window !== "undefined" ? window.location.origin : ""}/join?code=${group?.group_code}`}
+                          className="dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleCopyCode}
+                          aria-label="Copy invite link"
+                        >
+                          {copiedCode ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                    <Separator className="dark:border-gray-700" />
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-gray-900 dark:text-white">Members ({members.length})</Label>
+                        <Dialog open={isAddMemberOpen} onOpenChange={setIsAddMemberOpen}>
+                          <DialogTrigger asChild>
+                            <Button size="sm" variant="outline" aria-label="Add member">
+                              <UserPlus className="h-4 w-4 mr-1" />
+                              Add
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="dark:bg-gray-800 dark:border-gray-700">
+                            <DialogHeader>
+                              <DialogTitle className="text-gray-900 dark:text-white">Add Member</DialogTitle>
+                              <DialogDescription className="dark:text-gray-400">
+                                Add a new member to the group
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="add-member-name" className="text-gray-900 dark:text-white">Name</Label>
+                                <Input
+                                  id="add-member-name"
+                                  value={addMemberInput}
+                                  onChange={(e) => setAddMemberInput(e.target.value)}
+                                  placeholder="Enter member name"
+                                  className="dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                />
+                              </div>
+                              <DialogFooter>
+                                <Button variant="outline" onClick={() => setIsAddMemberOpen(false)}>Cancel</Button>
+                                <Button onClick={handleAddMember} disabled={saving}>Add Member</Button>
+                              </DialogFooter>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {members.map(member => (
+                          <div key={member.id} className="flex items-center justify-between p-3 border rounded-lg dark:border-gray-600">
+                            {editingMemberId === member.id ? (
+                              <div className="flex gap-2 flex-1">
+                                <Input
+                                  value={memberNameInput}
+                                  onChange={(e) => setMemberNameInput(e.target.value)}
+                                  className="flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                  aria-label="Member name"
+                                />
+                                <Button size="sm" onClick={() => handleUpdateMemberName(member.id)} disabled={saving}>Save</Button>
+                                <Button size="sm" variant="outline" onClick={() => {
+                                  setEditingMemberId(null)
+                                  setMemberNameInput("")
+                                }}>Cancel</Button>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                    <span className="font-medium text-sm text-gray-900 dark:text-white">
+                                      {member.display_name.charAt(0).toUpperCase()}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <p className="font-medium text-gray-900 dark:text-white">{member.display_name}</p>
+                                    {member.user_id === group?.owner_id && (
+                                      <Badge variant="outline" className="text-xs">Owner</Badge>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEditingMemberId(member.id)
+                                      setMemberNameInput(member.display_name)
+                                    }}
+                                    aria-label={`Edit ${member.display_name}'s name`}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  {members.length > 1 && member.user_id !== group?.owner_id && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleRemoveMember(member.id)}
+                                      disabled={saving}
+                                      aria-label={`Remove ${member.display_name}`}
+                                    >
+                                      <Trash2 className="h-4 w-4 text-red-500" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+              <Link href={`/groups/${groupId}/settings`}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="dark:border-gray-600 dark:hover:bg-gray-800 dark:text-gray-200"
+                >
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </Link>
               <Button
                 variant="outline"
                 size="sm"
@@ -206,7 +575,7 @@ export default function GroupDashboardPage() {
 
       <main className="max-w-4xl mx-auto px-4 py-6">
         <Tabs defaultValue="expenses" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 bg-gray-100 dark:bg-gray-800">
+          <TabsList className="grid w-full grid-cols-2 bg-gray-100 dark:bg-gray-800">
             <TabsTrigger value="expenses" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700 data-[state=active]:shadow-sm">
               <Receipt className="h-4 w-4" />
               <span className="hidden sm:inline">Expenses</span>
@@ -214,10 +583,6 @@ export default function GroupDashboardPage() {
             <TabsTrigger value="balances" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700 data-[state=active]:shadow-sm">
               <Wallet className="h-4 w-4" />
               <span className="hidden sm:inline">Balances</span>
-            </TabsTrigger>
-            <TabsTrigger value="settings" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700 data-[state=active]:shadow-sm">
-              <Settings className="h-4 w-4" />
-              <span className="hidden sm:inline">Settings</span>
             </TabsTrigger>
           </TabsList>
 
@@ -389,45 +754,6 @@ export default function GroupDashboardPage() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="settings" className="space-y-6">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Group Settings</h2>
-            
-            <Card className="dark:bg-gray-800 dark:border-gray-700">
-              <CardHeader>
-                <CardTitle className="text-gray-900 dark:text-white">Members</CardTitle>
-                <CardDescription className="dark:text-gray-400">Manage group members</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {members.map(member => (
-                  <div key={member.id} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                        <span className="text-sm font-medium">
-                          {member.display_name.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <span className="text-gray-900 dark:text-white">{member.display_name}</span>
-                    </div>
-                    {group?.owner_id && (
-                      <Badge variant="outline" className="dark:border-gray-600 dark:text-gray-300">Member</Badge>
-                    )}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card className="dark:bg-gray-800 dark:border-gray-700">
-              <CardHeader>
-                <CardTitle className="text-gray-900 dark:text-white">Group Info</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">Default Currency</span>
-                  <span className="font-medium text-gray-900 dark:text-white">{group?.default_currency}</span>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
         </Tabs>
       </main>
     </div>
