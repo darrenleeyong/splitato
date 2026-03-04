@@ -30,12 +30,16 @@ import {
   Check,
   Shield,
   Eye,
-  EyeOff
+  EyeOff,
+  AlertTriangle,
+  RefreshCw,
+  Home
 } from "lucide-react"
 import { toast } from "sonner"
 import { useGroup } from "@/hooks/useGroup"
-import { getCurrencySymbol, CURRENCIES } from "@/lib/constants"
+import { getCurrencySymbol, CURRENCIES, getCategoryEmoji } from "@/lib/constants"
 import type { Group, GroupMember, Expense, ExpenseSplit, Settlement } from "@/lib/supabase/types"
+import { MemberAvatar } from "@/components/ui/avatar"
 
 export default function GroupDashboardPage() {
   const router = useRouter()
@@ -45,14 +49,16 @@ export default function GroupDashboardPage() {
   const { verifyPin, isPinVerified, clearPinVerification } = useGroup()
 
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [loadingTimeout, setLoadingTimeout] = useState(false)
   const [verifyingPin, setVerifyingPin] = useState(false)
   const [pinInput, setPinInput] = useState("")
   const [group, setGroup] = useState<Group | null>(null)
+  const [groupBasicInfo, setGroupBasicInfo] = useState<{ name: string; group_code: string } | null>(null)
   const [members, setMembers] = useState<GroupMember[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [settlements, setSettlements] = useState<Settlement[]>([])
   const [expenseSplits, setExpenseSplits] = useState<ExpenseSplit[]>([])
-  const [showOriginalCurrency, setShowOriginalCurrency] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
   // Settings state
@@ -72,39 +78,80 @@ export default function GroupDashboardPage() {
   const [saving, setSaving] = useState(false)
   const [copiedCode, setCopiedCode] = useState(false)
   const [isPeopleOpen, setIsPeopleOpen] = useState(false)
+  const [showDeleteMemberDialog, setShowDeleteMemberDialog] = useState(false)
+  const [memberToDelete, setMemberToDelete] = useState<{id: string, name: string} | null>(null)
 
   useEffect(() => {
+    // Set a timeout to show error message if loading takes too long
+    const timeoutId = setTimeout(() => {
+      if (loading) {
+        setLoadingTimeout(true)
+      }
+    }, 120000) // 2 minutes
+
+    // Fetch basic group info for PIN screen
+    fetchBasicGroupInfo()
+
     if (isPinVerified(groupId)) {
       fetchGroupData()
     } else {
       setLoading(false)
     }
+
+    return () => clearTimeout(timeoutId)
   }, [groupId, isPinVerified])
+
+  const fetchBasicGroupInfo = async () => {
+    try {
+      const { data } = await supabase
+        .from("groups")
+        .select("name, group_code")
+        .eq("id", groupId)
+        .single()
+      setGroupBasicInfo(data)
+    } catch (err) {
+      // Ignore - will show generic message
+    }
+  }
 
   const fetchGroupData = async () => {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    setCurrentUserId(user?.id || null)
+    setError(null)
+    setLoadingTimeout(false)
 
-    const [groupRes, membersRes, expensesRes, settlementsRes, splitsRes] = await Promise.all([
-      supabase.from("groups").select("*").eq("id", groupId).single(),
-      supabase.from("group_members").select("*").eq("group_id", groupId),
-      supabase.from("expenses").select("*").eq("group_id", groupId).order("date", { ascending: false }),
-      supabase.from("settlements").select("*").eq("group_id", groupId).order("date", { ascending: false }),
-      supabase.from("expense_splits").select("*")
-    ])
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      setCurrentUserId(user?.id || null)
 
-    setGroup(groupRes.data)
-    setMembers(membersRes.data || [])
-    setExpenses(expensesRes.data || [])
-    setSettlements(settlementsRes.data || [])
-    setExpenseSplits(splitsRes.data || [])
-    
-    if (groupRes.data) {
-      setNameInput(groupRes.data.name)
-      setCurrencyInput(groupRes.data.default_currency)
+      const [groupRes, membersRes, expensesRes, settlementsRes, splitsRes] = await Promise.all([
+        supabase.from("groups").select("*").eq("id", groupId).single(),
+        supabase.from("group_members").select("*").eq("group_id", groupId),
+        supabase.from("expenses").select("*").eq("group_id", groupId).order("date", { ascending: false }),
+        supabase.from("settlements").select("*").eq("group_id", groupId).order("date", { ascending: false }),
+        supabase.from("expense_splits").select("*")
+      ])
+
+      if (groupRes.error) {
+        setError("Failed to load group. The group may not exist or you may not have access.")
+        setLoading(false)
+        return
+      }
+
+      setGroup(groupRes.data)
+      setMembers(membersRes.data || [])
+      setExpenses(expensesRes.data || [])
+      setSettlements(settlementsRes.data || [])
+      setExpenseSplits(splitsRes.data || [])
+      
+      if (groupRes.data) {
+        setNameInput(groupRes.data.name)
+        setCurrencyInput(groupRes.data.default_currency)
+      }
+      setLoading(false)
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.")
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const isOwner = group?.owner_id === currentUserId
@@ -260,11 +307,11 @@ export default function GroupDashboardPage() {
     setSaving(false)
   }
 
-  const handleRemoveMember = async (memberId: string) => {
-    const member = members.find(m => m.id === memberId)
-    if (!confirm(`Remove ${member?.display_name} from the group?`)) return
+  const handleRemoveMember = async () => {
+    if (!memberToDelete) return
+    
     setSaving(true)
-    const { error } = await supabase.from("group_members").delete().eq("id", memberId)
+    const { error } = await supabase.from("group_members").delete().eq("id", memberToDelete.id)
     if (error) {
       toast.error(error.message)
     } else {
@@ -272,6 +319,14 @@ export default function GroupDashboardPage() {
       fetchGroupData()
     }
     setSaving(false)
+    setShowDeleteMemberDialog(false)
+    setMemberToDelete(null)
+  }
+
+  const openDeleteMemberDialog = (memberId: string) => {
+    const member = members.find(m => m.id === memberId)
+    setMemberToDelete({ id: memberId, name: member?.display_name || "this member" })
+    setShowDeleteMemberDialog(true)
   }
 
   const handleDeleteGroup = async () => {
@@ -301,6 +356,12 @@ export default function GroupDashboardPage() {
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
         <Card className="w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
           <CardHeader>
+            {groupBasicInfo && (
+              <div className="mb-2 text-center">
+                <p className="text-lg font-semibold text-gray-900 dark:text-white">{groupBasicInfo.name}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Code: {groupBasicInfo.group_code}</p>
+              </div>
+            )}
             <CardTitle className="text-gray-900 dark:text-white">Enter Group PIN</CardTitle>
             <CardDescription className="dark:text-gray-400">Enter the 4-digit PIN to access this group</CardDescription>
           </CardHeader>
@@ -338,6 +399,86 @@ export default function GroupDashboardPage() {
     )
   }
 
+  // Show error if any
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/20">
+              <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
+            </div>
+            <CardTitle className="text-gray-900 dark:text-white">Error</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-center text-gray-500 dark:text-gray-400">{error}</p>
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={() => {
+                  setError(null)
+                  fetchGroupData()
+                }}
+                className="w-full bg-[#1A1A1A] hover:bg-[#2D2D2D] dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Try Again
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => router.push("/")}
+                className="w-full dark:border-gray-600 dark:hover:bg-gray-800 dark:text-gray-200"
+              >
+                <Home className="mr-2 h-4 w-4" />
+                Go to Home
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Show loading timeout message
+  if (loadingTimeout) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900/20">
+              <AlertTriangle className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
+            </div>
+            <CardTitle className="text-gray-900 dark:text-white">Loading Taking Too Long</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-center text-gray-500 dark:text-gray-400">
+              The page is taking longer than expected to load. This might be due to network issues.
+            </p>
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={() => {
+                  setLoadingTimeout(false)
+                  fetchGroupData()
+                }}
+                className="w-full bg-[#1A1A1A] hover:bg-[#2D2D2D] dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Try Again
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => router.push("/")}
+                className="w-full dark:border-gray-600 dark:hover:bg-gray-800 dark:text-gray-200"
+              >
+                <Home className="mr-2 h-4 w-4" />
+                Go to Home
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
@@ -346,27 +487,72 @@ export default function GroupDashboardPage() {
     )
   }
 
-  // Calculate balances
-  const balances: Record<string, number> = {}
-  members.forEach(m => balances[m.id] = 0)
+  // Calculate balances by currency
+  const allCurrencies = [
+    group?.default_currency,
+    group?.additional_currency_1,
+    group?.additional_currency_2,
+  ].filter(Boolean) as string[]
+
+  const balancesByCurrency: Record<string, Record<string, number>> = {}
+  allCurrencies.forEach(currency => {
+    balancesByCurrency[currency] = {}
+    members.forEach(m => balancesByCurrency[currency][m.id] = 0)
+  })
 
   expenses.forEach(expense => {
-    balances[expense.payer_id] = (balances[expense.payer_id] || 0) + Number(expense.amount)
+    const currency = expense.currency || group?.default_currency || "USD"
+    if (!balancesByCurrency[currency]) {
+      balancesByCurrency[currency] = {}
+      members.forEach(m => balancesByCurrency[currency][m.id] = 0)
+    }
+    balancesByCurrency[currency][expense.payer_id] = (balancesByCurrency[currency][expense.payer_id] || 0) + Number(expense.amount)
   })
 
   expenseSplits.forEach(split => {
-    balances[split.member_id] = (balances[split.member_id] || 0) - Number(split.amount)
+    // Find the expense to get its currency
+    const expense = expenses.find(e => e.id === split.expense_id)
+    const currency = expense?.currency || group?.default_currency || "USD"
+    if (!balancesByCurrency[currency]) {
+      balancesByCurrency[currency] = {}
+      members.forEach(m => balancesByCurrency[currency][m.id] = 0)
+    }
+    balancesByCurrency[currency][split.member_id] = (balancesByCurrency[currency][split.member_id] || 0) - Number(split.amount)
   })
 
   settlements.forEach(settlement => {
-    balances[settlement.sender_id] = (balances[settlement.sender_id] || 0) - Number(settlement.amount)
-    balances[settlement.receiver_id] = (balances[settlement.receiver_id] || 0) + Number(settlement.amount)
+    // Settlements are in default currency
+    const currency = group?.default_currency || "USD"
+    if (!balancesByCurrency[currency]) {
+      balancesByCurrency[currency] = {}
+      members.forEach(m => balancesByCurrency[currency][m.id] = 0)
+    }
+    balancesByCurrency[currency][settlement.sender_id] = (balancesByCurrency[currency][settlement.sender_id] || 0) - Number(settlement.amount)
+    balancesByCurrency[currency][settlement.receiver_id] = (balancesByCurrency[currency][settlement.receiver_id] || 0) + Number(settlement.amount)
   })
 
   const memberBalances = members.map(m => ({
     ...m,
-    balance: balances[m.id] || 0
+    balances: allCurrencies.reduce((acc, currency) => {
+      acc[currency] = balancesByCurrency[currency]?.[m.id] || 0
+      return acc
+    }, {} as Record<string, number>)
   }))
+
+  // Group expenses by currency for total display
+  const totalByCurrency = expenses.reduce((acc, expense) => {
+    const currency = expense.currency || "USD"
+    if (!acc[currency]) {
+      acc[currency] = 0
+    }
+    acc[currency] += Number(expense.amount)
+    return acc
+  }, {} as Record<string, number>)
+
+  // Format total string: "S$100.00 + ¥6700.00"
+  const totalSpentText = Object.entries(totalByCurrency)
+    .map(([currency, amount]) => `${getCurrencySymbol(currency)}${amount.toFixed(2)}`)
+    .join(" + ")
 
   // Group expenses by date
   const expensesByDate = expenses.reduce((acc, expense) => {
@@ -378,10 +564,32 @@ export default function GroupDashboardPage() {
     return acc
   }, {} as Record<string, Expense[]>)
 
-  const totalSpent = expenses.reduce((sum, e) => sum + Number(e.amount), 0)
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors">
+      <Dialog open={showDeleteMemberDialog} onOpenChange={setShowDeleteMemberDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove Member</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove {memberToDelete?.name} from the group?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+            <p className="text-sm text-amber-800 dark:text-amber-200">
+              <strong>Warning:</strong> This will not update or delete any expenses. Any expenses involving this member will remain in the group and may need to be manually adjusted.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteMemberDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleRemoveMember} disabled={saving}>
+              {saving ? "Removing..." : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <header className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4">
             <div className="flex items-center justify-between">
@@ -407,7 +615,7 @@ export default function GroupDashboardPage() {
                   )}
                 </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {members.length} member{members.length !== 1 ? "s" : ""} · {getCurrencySymbol(group?.default_currency || "USD")}{totalSpent.toFixed(2)} total
+                  {members.length} member{members.length !== 1 ? "s" : ""} · Group total: {totalSpentText}
                 </p>
               </div>
             </div>
@@ -506,13 +714,9 @@ export default function GroupDashboardPage() {
                             ) : (
                               <>
                                 <div className="flex items-center gap-3">
-                                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                                    <span className="font-medium text-sm text-gray-900 dark:text-white">
-                                      {member.display_name.charAt(0).toUpperCase()}
-                                    </span>
-                                  </div>
+                                  <MemberAvatar name={member.display_name} />
                                   <div>
-                                    <p className="font-medium text-gray-900 dark:text-white">{member.display_name}</p>
+                                    <p className="font-medium text-gray-900 dark:text-white">{member.display_name || "Guest"}</p>
                                     {member.user_id === group?.owner_id && (
                                       <Badge variant="outline" className="text-xs">Owner</Badge>
                                     )}
@@ -534,7 +738,7 @@ export default function GroupDashboardPage() {
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      onClick={() => handleRemoveMember(member.id)}
+                                      onClick={() => openDeleteMemberDialog(member.id)}
                                       disabled={saving}
                                       aria-label={`Remove ${member.display_name}`}
                                     >
@@ -560,14 +764,6 @@ export default function GroupDashboardPage() {
                   <Settings className="h-4 w-4" />
                 </Button>
               </Link>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowOriginalCurrency(!showOriginalCurrency)}
-                className="dark:border-gray-600 dark:hover:bg-gray-800 dark:text-gray-200"
-              >
-                {showOriginalCurrency ? "Original" : "Default"}
-              </Button>
             </div>
           </div>
         </div>
@@ -608,8 +804,20 @@ export default function GroupDashboardPage() {
             ) : (
               <div className="space-y-6">
                 {Object.entries(expensesByDate).map(([date, dayExpenses]) => {
-                  const dayTotal = dayExpenses.reduce((sum, e) => sum + Number(e.amount), 0)
-                  
+                  // Group day expenses by currency
+                  const dayTotalByCurrency = dayExpenses.reduce((acc, e) => {
+                    const currency = e.currency || "USD"
+                    if (!acc[currency]) {
+                      acc[currency] = 0
+                    }
+                    acc[currency] += Number(e.amount)
+                    return acc
+                  }, {} as Record<string, number>)
+
+                  const dayTotalText = Object.entries(dayTotalByCurrency)
+                    .map(([currency, amount]) => `${getCurrencySymbol(currency)}${amount.toFixed(2)}`)
+                    .join(" + ")
+
                   return (
                     <div key={date}>
                       <div className="flex items-center justify-between mb-2">
@@ -617,30 +825,61 @@ export default function GroupDashboardPage() {
                           {new Date(date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
                         </p>
                         <p className="text-sm font-medium text-gray-900 dark:text-white">
-                          {getCurrencySymbol(group?.default_currency || "USD")}{dayTotal.toFixed(2)}
+                          {dayTotalText}
                         </p>
                       </div>
                       <Card className="dark:bg-gray-800 dark:border-gray-700">
                         <CardContent className="p-0">
                           {dayExpenses.map((expense, idx) => {
                             const expensePayer = members.find(m => m.id === expense.payer_id)
+                            const expenseSplitMembers = expenseSplits
+                              .filter(s => s.expense_id === expense.id)
+                              .map(s => members.find(m => m.id === s.member_id))
+                              .filter(Boolean) as GroupMember[]
+                            
+                            const involvedMembers = expenseSplitMembers.length > 0 ? expenseSplitMembers : members
+                            const involvedCount = involvedMembers.length
+                            const perPersonAmount = expense.split_type === "even" 
+                              ? Number(expense.amount) / involvedCount
+                              : null
+
                             return (
                               <div key={expense.id}>
                                 <Link href={`/groups/${groupId}/expense/${expense.id}/edit`}>
-                                  <div className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
-                                    <div className="flex-1">
-                                      <p className="font-medium text-gray-900 dark:text-white">{expense.description}</p>
-                                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                                        {expensePayer?.display_name || "Unknown"} paid · {expense.split_type}
-                                      </p>
+                                  <div className="p-4 flex items-center gap-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
+                                    <span className="text-2xl">{getCategoryEmoji(expense.description)}</span>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-medium text-gray-900 dark:text-white truncate">{expense.description}</p>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <div className="flex -space-x-2">
+                                          {involvedMembers.slice(0, 5).map((member, i) => (
+                                            <MemberAvatar 
+                                              key={member.id} 
+                                              name={member.display_name} 
+                                              size="sm" 
+                                              className="ring-2 ring-white dark:ring-gray-800"
+                                            />
+                                          ))}
+                                          {involvedCount > 5 && (
+                                            <div className="size-6 rounded-full bg-gray-200 dark:bg-gray-600 flex items-center justify-center text-xs font-medium text-gray-600 dark:text-gray-300 ring-2 ring-white dark:ring-gray-800">
+                                              +{involvedCount - 5}
+                                            </div>
+                                          )}
+                                        </div>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                                          {expensePayer?.display_name || "Unknown"} paid · {expense.split_type}
+                                          {perPersonAmount !== null && (
+                                            <span className="ml-1 text-gray-400 dark:text-gray-500">
+                                              ({getCurrencySymbol(expense.currency || "USD")}{perPersonAmount.toFixed(2)}/person)
+                                            </span>
+                                          )}
+                                        </p>
+                                      </div>
                                     </div>
-                                    <div className="text-right">
+                                    <div className="text-right shrink-0">
                                       <p className="font-semibold text-gray-900 dark:text-white">
-                                        {getCurrencySymbol(showOriginalCurrency ? expense.currency : group?.default_currency || "USD")}
+                                        {getCurrencySymbol(expense.currency || "USD")}
                                         {Number(expense.amount).toFixed(2)}
-                                        {showOriginalCurrency && expense.currency !== group?.default_currency && (
-                                          <span className="text-xs text-gray-500 ml-1">({expense.currency})</span>
-                                        )}
                                       </p>
                                       {expense.receipt_url && (
                                         <Badge variant="secondary" className="text-xs">Receipt</Badge>
@@ -677,29 +916,60 @@ export default function GroupDashboardPage() {
                 <CardTitle className="text-gray-900 dark:text-white">Net Balances</CardTitle>
                 <CardDescription className="dark:text-gray-400">Positive = owed money · Negative = owes money</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
-                {memberBalances.map(member => (
-                  <div key={member.id} className="flex items-center justify-between">
-                    <span className="text-gray-900 dark:text-white">{member.display_name}</span>
-                    <span className={`font-semibold ${member.balance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                      {member.balance >= 0 ? "+" : ""}{getCurrencySymbol(group?.default_currency || "USD")}{member.balance.toFixed(2)}
-                    </span>
-                  </div>
-                ))}
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b dark:border-gray-700">
+                        <th className="text-left py-3 px-4 font-medium text-gray-500 dark:text-gray-400">Member</th>
+                        {allCurrencies.map(currency => (
+                          <th key={currency} className="text-right py-3 px-4 font-medium text-gray-500 dark:text-gray-400">
+                            {currency}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {memberBalances.map(member => (
+                        <tr key={member.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              <MemberAvatar name={member.display_name} size="sm" />
+                              <span className="text-gray-900 dark:text-white">{member.display_name || "Guest"}</span>
+                            </div>
+                          </td>
+                          {allCurrencies.map(currency => {
+                            const balance = member.balances[currency] || 0
+                            const isPositive = balance >= 0
+                            return (
+                              <td key={currency} className="text-right py-3 px-4">
+                                <span className={`font-semibold ${isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                                  {isPositive ? "+" : ""}{getCurrencySymbol(currency)}{balance.toFixed(2)}
+                                </span>
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </CardContent>
             </Card>
 
-            {/* Simplified debts view */}
+            {/* Simplified debts view - shows debts in default currency only */}
             <Card className="dark:bg-gray-800 dark:border-gray-700">
               <CardHeader>
                 <CardTitle className="text-gray-900 dark:text-white">Who Owes Whom</CardTitle>
+                <CardDescription className="dark:text-gray-400">Based on {group?.default_currency} balance</CardDescription>
               </CardHeader>
               <CardContent>
-                {memberBalances.filter(m => m.balance < -0.01).map(debtor => {
-                  const creditor = memberBalances.find(m => m.balance > 0.01)
+                {memberBalances.filter(m => (m.balances[group?.default_currency || "USD"] || 0) < -0.01).map(debtor => {
+                  const creditor = memberBalances.find(m => (m.balances[group?.default_currency || "USD"] || 0) > 0.01)
                   if (!creditor) return null
                   
-                  const amount = Math.min(Math.abs(debtor.balance), creditor.balance)
+                  const defaultCurrency = group?.default_currency || "USD"
+                  const amount = Math.min(Math.abs(debtor.balances[defaultCurrency] || 0), creditor.balances[defaultCurrency] || 0)
                   if (amount < 0.01) return null
                   
                   return (
@@ -710,11 +980,14 @@ export default function GroupDashboardPage() {
                         <span className="text-gray-900 dark:text-white">{creditor.display_name}</span>
                       </div>
                       <span className="font-semibold text-gray-900 dark:text-white">
-                        {getCurrencySymbol(group?.default_currency || "USD")}{amount.toFixed(2)}
+                        {getCurrencySymbol(defaultCurrency)}{amount.toFixed(2)}
                       </span>
                     </div>
                   )
                 })}
+                {memberBalances.every(m => Math.abs(m.balances[group?.default_currency || "USD"] || 0) < 0.01) && (
+                  <p className="text-gray-500 dark:text-gray-400 text-center py-4">All settled up!</p>
+                )}
               </CardContent>
             </Card>
 
