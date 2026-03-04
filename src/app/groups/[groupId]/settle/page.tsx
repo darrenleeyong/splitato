@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter, useParams } from "next/navigation"
+import { useRouter, useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -18,6 +18,7 @@ import { getCurrencySymbol } from "@/lib/constants"
 import type { Group, GroupMember, Expense, ExpenseSplit, Settlement } from "@/lib/supabase/types"
 
 const settlementSchema = z.object({
+  senderId: z.string().min(1, "Payer is required"),
   receiverId: z.string().min(1, "Receiver is required"),
   amount: z.coerce.number().min(0.01, "Amount must be greater than 0"),
   date: z.string().min(1, "Date is required"),
@@ -28,6 +29,7 @@ type SettlementFormData = z.infer<typeof settlementSchema>
 export default function PayBalancePage() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const groupId = params.groupId as string
   const supabase = createClient()
 
@@ -45,22 +47,44 @@ export default function PayBalancePage() {
     handleSubmit,
     watch,
     setValue,
+    trigger,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(settlementSchema),
     defaultValues: {
+      senderId: "",
       receiverId: "",
       amount: 0,
       date: new Date().toISOString().split("T")[0],
     },
   })
 
+  const watchSenderId = watch("senderId")
   const watchReceiverId = watch("receiverId")
   const watchAmount = watch("amount")
 
   useEffect(() => {
     fetchData()
   }, [])
+
+  // Apply query params to form after data is loaded
+  useEffect(() => {
+    if (members.length > 0) {
+      const senderId = searchParams.get("senderId")
+      const receiverId = searchParams.get("receiverId")
+      const amount = searchParams.get("amount")
+      
+      if (senderId) {
+        setValue("senderId", senderId)
+      }
+      if (receiverId) {
+        setValue("receiverId", receiverId)
+      }
+      if (amount) {
+        setValue("amount", parseFloat(amount))
+      }
+    }
+  }, [members, searchParams, setValue])
 
   const fetchData = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -82,17 +106,17 @@ export default function PayBalancePage() {
 
     // Calculate balances
     const memberBalances: Record<string, number> = {}
-    membersRes.data?.forEach(m => memberBalances[m.id] = 0)
+    membersRes.data?.forEach((m: { id: string }) => memberBalances[m.id] = 0)
 
-    expensesRes.data?.forEach(expense => {
+    expensesRes.data?.forEach((expense: { payer_id: string, amount: number, expense_splits?: { member_id: string, amount: number }[] }) => {
       memberBalances[expense.payer_id] = (memberBalances[expense.payer_id] || 0) + Number(expense.amount)
     })
 
-    splitsRes.data?.forEach(split => {
+    splitsRes.data?.forEach((split: { member_id: string, amount: number }) => {
       memberBalances[split.member_id] = (memberBalances[split.member_id] || 0) - Number(split.amount)
     })
 
-    settlementsRes.data?.forEach(settlement => {
+    settlementsRes.data?.forEach((settlement: { sender_id: string, receiver_id: string, amount: number }) => {
       memberBalances[settlement.sender_id] = (memberBalances[settlement.sender_id] || 0) - Number(settlement.amount)
       memberBalances[settlement.receiver_id] = (memberBalances[settlement.receiver_id] || 0) + Number(settlement.amount)
     })
@@ -100,10 +124,10 @@ export default function PayBalancePage() {
     setBalances(memberBalances)
 
     // Pre-select receiver if current user owes someone
-    const currentMember = membersRes.data?.find(m => m.user_id === user?.id)
+    const currentMember = membersRes.data?.find((m: { user_id: string, id: string }) => m.user_id === user?.id)
     if (currentMember && memberBalances[currentMember.id] < -0.01) {
       // Find who current user owes
-      const creditors = membersRes.data?.filter(m => 
+      const creditors = membersRes.data?.filter((m: { id: string }) => 
         m.id !== currentMember.id && (memberBalances[m.id] || 0) > 0.01
       ) || []
       if (creditors.length > 0) {
@@ -112,30 +136,99 @@ export default function PayBalancePage() {
     }
   }
 
-  // Get simplified debts
-  const getDebts = () => {
-    const debts: Array<{from: GroupMember, to: GroupMember, amount: number}> = []
-    const memberList = members.filter(m => m.id !== currentUserId)
+  // Calculate amount owed from sender to receiver
+  const calculateOwedAmount = (senderId: string, receiverId: string): number => {
+    if (!senderId || !receiverId || senderId === receiverId) return 0
     
-    // Find who current user owes
-    const currentMember = members.find(m => m.user_id === currentUserId)
-    if (!currentMember) return debts
+    const senderMember = members.find(m => m.id === senderId)
+    const receiverMember = members.find(m => m.id === receiverId)
+    
+    if (!senderMember || !receiverMember) return 0
+    
+    const senderBalance = balances[senderId] || 0
+    const receiverBalance = balances[receiverId] || 0
+    
+    // If sender owes receiver (sender has negative balance towards receiver)
+    // We need to calculate direct debt between these two members
+    
+    let amountOwed = 0
+    
+    // Calculate total expenses paid by receiver for sender
+    const expensesPaidByReceiver = expenses.filter(e => 
+      e.payer_id === receiverId
+    )
+    
+    const splitsForSender = expenseSplits.filter(s => 
+      s.member_id === senderId
+    )
+    
+    // Calculate what receiver paid that involved sender
+    let receiverPaidForSender = 0
+    expensesPaidByReceiver.forEach(expense => {
+      const split = splitsForSender.find(s => s.expense_id === expense.id)
+      if (split) {
+        receiverPaidForSender += Number(split.amount)
+      }
+    })
+    
+    // Calculate what sender paid that involved receiver
+    const expensesPaidBySender = expenses.filter(e => 
+      e.payer_id === senderId
+    )
+    
+    const splitsForReceiver = expenseSplits.filter(s => 
+      s.member_id === receiverId
+    )
+    
+    let senderPaidForReceiver = 0
+    expensesPaidBySender.forEach(expense => {
+      const split = splitsForReceiver.find(s => s.expense_id === expense.id)
+      if (split) {
+        senderPaidForReceiver += Number(split.amount)
+      }
+    })
+    
+    // Net amount: positive means sender owes receiver
+    amountOwed = senderPaidForReceiver - receiverPaidForSender
+    
+    // Account for settlements
+    const settlementsFromSenderToReceiver = settlements.filter(s => 
+      s.sender_id === senderId && s.receiver_id === receiverId
+    )
+    const settlementsFromReceiverToSender = settlements.filter(s => 
+      s.sender_id === receiverId && s.receiver_id === senderId
+    )
+    
+    const senderSettled = settlementsFromSenderToReceiver.reduce((sum, s) => sum + Number(s.amount), 0)
+    const receiverSettled = settlementsFromReceiverToSender.reduce((sum, s) => sum + Number(s.amount), 0)
+    
+    amountOwed = amountOwed - senderSettled + receiverSettled
+    
+    return Math.max(0, amountOwed)
+  }
 
-    const currentBalance = balances[currentMember.id] || 0
-    
-    if (currentBalance < -0.01) {
-      // Current user owes money
-      const creditors = members.filter(m => m.id !== currentMember.id && (balances[m.id] || 0) > 0.01)
-      creditors.forEach(creditor => {
-        const creditorBalance = balances[creditor.id] || 0
-        const owedAmount = Math.min(Math.abs(currentBalance), creditorBalance)
-        if (owedAmount > 0.01) {
-          debts.push({ from: currentMember, to: creditor, amount: owedAmount })
-        }
-      })
+  // Handle receiver change and auto-fill amount
+  const handleReceiverChange = (receiverId: string) => {
+    setValue("receiverId", receiverId)
+    if (watchSenderId) {
+      const owed = calculateOwedAmount(watchSenderId, receiverId)
+      if (owed > 0.01) {
+        setValue("amount", owed)
+      }
     }
+  }
 
-    return debts
+  // Handle sender change
+  const handleSenderChange = (senderId: string) => {
+    setValue("senderId", senderId)
+    if (watchReceiverId) {
+      const owed = calculateOwedAmount(senderId, watchReceiverId)
+      if (owed > 0.01) {
+        setValue("amount", owed)
+      } else {
+        trigger("amount")
+      }
+    }
   }
 
   const onSubmit = async (data: SettlementFormData) => {
@@ -146,7 +239,7 @@ export default function PayBalancePage() {
         .from("settlements")
         .insert({
           group_id: groupId,
-          sender_id: members.find(m => m.user_id === currentUserId)?.id,
+          sender_id: data.senderId,
           receiver_id: data.receiverId,
           amount: data.amount,
           date: data.date,
@@ -159,7 +252,7 @@ export default function PayBalancePage() {
       }
 
       toast.success("Settlement recorded!")
-      router.push(`/groups/${groupId}`)
+      router.push(`/groups/${groupId}?tab=balances`)
       router.refresh()
     } catch (error) {
       toast.error("Failed to record settlement")
@@ -168,13 +261,9 @@ export default function PayBalancePage() {
     }
   }
 
-  const debts = getDebts()
-  const currentMember = members.find(m => m.user_id === currentUserId)
-  const currentBalance = currentMember ? balances[currentMember.id] || 0 : 0
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      <header className="bg-white border-b sticky top-0 z-10">
+      <header className="bg-white dark:bg-gray-900 border-b sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4">
           <div className="flex items-center gap-3">
             <Link href={`/groups/${groupId}`}>
@@ -190,82 +279,50 @@ export default function PayBalancePage() {
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle>Your Balance</CardTitle>
-            <CardDescription>How much you owe or are owed</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className={`text-3xl font-bold text-center py-4 ${
-              currentBalance >= 0 ? "text-green-600" : "text-red-600"
-            }`}>
-              {currentBalance >= 0 ? "+" : ""}
-              {getCurrencySymbol(group?.default_currency || "USD")}
-              {Math.abs(currentBalance).toFixed(2)}
-            </div>
-            <p className="text-center text-gray-500">
-              {currentBalance >= 0 ? "You are owed money" : "You owe money"}
-            </p>
-          </CardContent>
-        </Card>
-
-        {currentBalance < -0.01 && debts.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Suggested Settlements</CardTitle>
-              <CardDescription>Based on your balance</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {debts.map((debt, idx) => (
-                <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="font-medium">Pay {debt.to.display_name}</p>
-                    <p className="text-sm text-gray-500">You owe them</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold">
-                      {getCurrencySymbol(group?.default_currency || "USD")}
-                      {debt.amount.toFixed(2)}
-                    </p>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => {
-                        setValue("receiverId", debt.to.id)
-                        setValue("amount", debt.amount)
-                      }}
-                    >
-                      Select
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
-
-        <Card>
-          <CardHeader>
             <CardTitle>Record Payment</CardTitle>
             <CardDescription>Log a settlement payment</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div className="space-y-2">
+                <Label htmlFor="sender">Payer</Label>
+                <Select
+                  value={watchSenderId}
+                  onValueChange={handleSenderChange}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select who is paying" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {members.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.display_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.senderId && (
+                  <p className="text-sm text-red-500">{errors.senderId.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="receiver">Pay To</Label>
                 <Select
                   value={watchReceiverId}
-                  onValueChange={(v) => setValue("receiverId", v)}
+                  onValueChange={handleReceiverChange}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select who to pay" />
                   </SelectTrigger>
                   <SelectContent>
                     {members
-                      .filter(m => m.user_id !== currentUserId)
+                      .filter(m => m.id !== watchSenderId)
                       .map((m) => (
                       <SelectItem key={m.id} value={m.id}>
                         {m.display_name}
                         {(balances[m.id] || 0) > 0.01 && (
-                          <span className="text-gray-500 ml-2">
+                          <span className="text-gray-500 dark:text-gray-400 ml-2">
                             (owes {getCurrencySymbol(group?.default_currency || "USD")}{Math.abs(balances[m.id]).toFixed(2)})
                           </span>
                         )}

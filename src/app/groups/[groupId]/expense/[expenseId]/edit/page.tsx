@@ -130,11 +130,11 @@ export default function EditExpensePage() {
 
     if (splitsRes.data && membersRes.data) {
       // Only include members that have a split record for this expense
-      const splitMemberIds = new Set(splitsRes.data?.map((s: ExpenseSplit) => s.member_id) || [])
+      const splitMemberIds = new Set<string>(splitsRes.data?.map((s: ExpenseSplit) => s.member_id) || [])
       setIncludedMembers(splitMemberIds)
       
-      const memberSplits = membersRes.data.map(m => {
-        const split = splitsRes.data?.find(s => s.member_id === m.id)
+      const memberSplits = membersRes.data.map((m: GroupMember) => {
+        const split = splitsRes.data?.find((s: ExpenseSplit) => s.member_id === m.id)
         return {
           memberId: m.id,
           amount: split ? Number(split.amount) : 0,

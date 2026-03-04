@@ -11,8 +11,30 @@ interface GroupContextType {
   getGroup: (groupId: string) => Promise<Group | null>
   getGroupMembers: (groupId: string) => Promise<GroupMember[]>
   verifyPin: (groupId: string, pin: string) => Promise<boolean>
+  setPinVerified: (groupId: string) => void
   isPinVerified: (groupId: string) => boolean
   clearPinVerification: (groupId: string) => void
+}
+
+const STORAGE_KEY = "splitato_verified_pins"
+
+const getStoredVerifiedPins = (): Record<string, boolean> => {
+  if (typeof window === "undefined") return {}
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    return stored ? JSON.parse(stored) : {}
+  } catch {
+    return {}
+  }
+}
+
+const storeVerifiedPins = (pins: Record<string, boolean>) => {
+  if (typeof window === "undefined") return
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(pins))
+  } catch {
+    // Storage full or unavailable
+  }
 }
 
 const GroupContext = createContext<GroupContextType | undefined>(undefined)
@@ -20,7 +42,7 @@ const GroupContext = createContext<GroupContextType | undefined>(undefined)
 export function GroupProvider({ children }: { children: ReactNode }) {
   const [groups, setGroups] = useState<Group[]>([])
   const [loading, setLoading] = useState(true)
-  const [verifiedPins, setVerifiedPins] = useState<Record<string, boolean>>({})
+  const [verifiedPins, setVerifiedPins] = useState<Record<string, boolean>>(() => getStoredVerifiedPins())
   const supabase = createClient()
 
   const fetchGroups = async () => {
@@ -65,8 +87,8 @@ export function GroupProvider({ children }: { children: ReactNode }) {
     }
 
     // Combine group IDs from both queries
-    const memberGroupIds = members?.map(m => m.group_id) || []
-    const ownedGroupIds = ownedGroups?.map(g => g.id) || []
+    const memberGroupIds = members?.map((m: GroupMember) => m.group_id) || []
+    const ownedGroupIds = ownedGroups?.map((g: Group) => g.id) || []
     const allGroupIds = [...new Set([...memberGroupIds, ...ownedGroupIds])]
     console.log("All Group IDs:", allGroupIds)
 
@@ -127,7 +149,11 @@ export function GroupProvider({ children }: { children: ReactNode }) {
 
     const isValid = data.pin_code === pin
     if (isValid) {
-      setVerifiedPins(prev => ({ ...prev, [groupId]: true }))
+      setVerifiedPins(prev => {
+        const newState = { ...prev, [groupId]: true }
+        storeVerifiedPins(newState)
+        return newState
+      })
     }
     return isValid
   }
@@ -136,10 +162,19 @@ export function GroupProvider({ children }: { children: ReactNode }) {
     return verifiedPins[groupId] || false
   }
 
+  const setPinVerified = (groupId: string) => {
+    setVerifiedPins(prev => {
+      const newState = { ...prev, [groupId]: true }
+      storeVerifiedPins(newState)
+      return newState
+    })
+  }
+
   const clearPinVerification = (groupId: string) => {
     setVerifiedPins(prev => {
       const newState = { ...prev }
       delete newState[groupId]
+      storeVerifiedPins(newState)
       return newState
     })
   }
@@ -156,6 +191,7 @@ export function GroupProvider({ children }: { children: ReactNode }) {
       getGroup,
       getGroupMembers,
       verifyPin,
+      setPinVerified,
       isPinVerified,
       clearPinVerification
     }}>

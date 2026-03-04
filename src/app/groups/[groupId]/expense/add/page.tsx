@@ -108,7 +108,7 @@ export default function AddExpensePage() {
     setMembers(fetchedMembers)
     
     // Initialize all members as included
-    const allMemberIds = new Set(fetchedMembers.map((m: GroupMember) => m.id))
+    const allMemberIds = new Set<string>(fetchedMembers.map((m: GroupMember) => m.id))
     setIncludedMembers(allMemberIds)
     
     if (fetchedMembers.length > 0) {

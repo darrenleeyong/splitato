@@ -177,7 +177,7 @@ export default function SettingsPage() {
 
       const expenses = await supabase.from("expenses").select("payer_id").eq("group_id", groupId)
       const counts: Record<string, number> = {}
-      expenses.data?.forEach(e => {
+      expenses.data?.forEach((e: { payer_id: string }) => {
         counts[e.payer_id] = (counts[e.payer_id] || 0) + 1
       })
       setMemberExpenseCounts(counts)

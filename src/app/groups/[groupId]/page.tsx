@@ -135,7 +135,7 @@ export default function GroupDashboardPage() {
 
       // First get all expense IDs for this group
       const { data: expenseIdsData } = await supabase.from("expenses").select("id").eq("group_id", groupId)
-      const expenseIds = expenseIdsData?.map(e => e.id) || []
+      const expenseIds = expenseIdsData?.map((e: { id: string }) => e.id) || []
       
       // Then fetch all data including splits filtered by expense IDs
       const [groupRes, membersRes, expensesRes, settlementsRes, splitsRes] = await Promise.all([
