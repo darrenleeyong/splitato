@@ -19,6 +19,7 @@ export interface Database {
           group_code: string
           pin_code: string
           owner_id: string
+          simplify_debts: boolean
           created_at: string
         }
         Insert: {
@@ -30,6 +31,7 @@ export interface Database {
           group_code: string
           pin_code: string
           owner_id: string
+          simplify_debts?: boolean
           created_at?: string
         }
         Update: {
@@ -41,6 +43,7 @@ export interface Database {
           group_code?: string
           pin_code?: string
           owner_id?: string
+          simplify_debts?: boolean
           created_at?: string
         }
       }
@@ -49,21 +52,21 @@ export interface Database {
           id: string
           group_id: string
           user_id: string
-          display_name: string
+          display_name: string | null
           created_at: string
         }
         Insert: {
           id?: string
           group_id: string
           user_id: string
-          display_name: string
+          display_name?: string | null
           created_at?: string
         }
         Update: {
           id?: string
           group_id?: string
           user_id?: string
-          display_name?: string
+          display_name?: string | null
           created_at?: string
         }
       }
@@ -179,14 +182,14 @@ export interface ExpenseWithDetails extends Expense {
 
 export interface Balance {
   member_id: string
-  display_name: string
+  display_name: string | null
   amount: number
 }
 
 export interface MemberBalance {
   from_member_id: string
-  from_display_name: string
+  from_display_name: string | null
   to_member_id: string
-  to_display_name: string
+  to_display_name: string | null
   amount: number
 }
