@@ -2,8 +2,38 @@
 
 import * as React from "react"
 import { Avatar as AvatarPrimitive } from "radix-ui"
+import { cn, getAvatarColor, getInitials } from "@/lib/utils"
 
-import { cn } from "@/lib/utils"
+interface MemberAvatarProps {
+  name: string | null
+  size?: "default" | "sm" | "lg"
+  className?: string
+}
+
+function MemberAvatar({ name, size = "default", className }: MemberAvatarProps) {
+  const initials = getInitials(name)
+  const bgColor = getAvatarColor(name || "")
+
+  const sizeClasses = {
+    sm: "size-6 text-xs",
+    default: "size-8 text-sm",
+    lg: "size-10 text-base",
+  }
+
+  return (
+    <div
+      className={cn(
+        "rounded-full flex items-center justify-center font-medium text-white shrink-0",
+        bgColor,
+        sizeClasses[size],
+        className
+      )}
+      aria-label={name ? `Avatar for ${name}` : "Guest avatar"}
+    >
+      {initials}
+    </div>
+  )
+}
 
 function Avatar({
   className,
@@ -86,9 +116,9 @@ function AvatarGroup({ className, ...props }: React.ComponentProps<"div">) {
 function AvatarGroupCount({
   className,
   ...props
-}: React.ComponentProps<"div">) {
+}: React.ComponentProps<typeof AvatarPrimitive.Fallback>) {
   return (
-    <div
+    <AvatarPrimitive.Fallback
       data-slot="avatar-group-count"
       className={cn(
         "relative flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-sm text-muted-foreground ring-2 ring-background group-has-data-[size=lg]/avatar-group:size-10 group-has-data-[size=sm]/avatar-group:size-6 [&>svg]:size-4 group-has-data-[size=lg]/avatar-group:[&>svg]:size-5 group-has-data-[size=sm]/avatar-group:[&>svg]:size-3",
@@ -100,6 +130,7 @@ function AvatarGroupCount({
 }
 
 export {
+  MemberAvatar,
   Avatar,
   AvatarImage,
   AvatarFallback,

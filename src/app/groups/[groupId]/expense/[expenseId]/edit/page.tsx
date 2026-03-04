@@ -14,14 +14,23 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { ArrowLeft, Upload, Calculator, Trash2 } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { ArrowLeft, Upload, Calculator, Trash2, Check, X } from "lucide-react"
 import { toast } from "sonner"
 import { CURRENCIES, getCurrencySymbol } from "@/lib/constants"
 import type { Group, GroupMember, Expense, ExpenseSplit } from "@/lib/supabase/types"
+import { MemberAvatar } from "@/components/ui/avatar"
 
 const expenseSchema = z.object({
   description: z.string().min(1, "Description is required"),
-  amount: z.coerce.number().min(0.01, "Amount must be greater than 0"),
+  amount: z.coerce.number({ message: "Amount must be a valid number" }).min(0.01, "Amount must be greater than 0"),
   currency: z.string(),
   date: z.string().min(1, "Date is required"),
   payerId: z.string().min(1, "Payer is required"),
@@ -38,14 +47,18 @@ export default function EditExpensePage() {
   const supabase = createClient()
 
   const [loading, setLoading] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [group, setGroup] = useState<Group | null>(null)
   const [members, setMembers] = useState<GroupMember[]>([])
   const [expense, setExpense] = useState<Expense | null>(null)
   const [splits, setSplits] = useState<ExpenseSplit[]>([])
-  const [splitsInput, setSplitsInput] = useState<Array<{memberId: string, amount: number, percentage: number}>>([])
+  const [splitsInput, setSplitsInput] = useState<Array<{memberId: string, amount: number, percentage: number, included: boolean}>>([])
+  const [includedMembers, setIncludedMembers] = useState<Set<string>>(new Set())
   const [receiptFile, setReceiptFile] = useState<File | null>(null)
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
   const [existingReceiptUrl, setExistingReceiptUrl] = useState<string | null>(null)
+  const [showImageZoom, setShowImageZoom] = useState(false)
+  const [showDeleteReceiptDialog, setShowDeleteReceiptDialog] = useState(false)
 
   const {
     register,
@@ -75,15 +88,18 @@ export default function EditExpensePage() {
 
   useEffect(() => {
     if (members.length > 0 && watchSplitType === "even") {
-      const evenAmount = Number(watchAmount) / members.length
+      const amount = Number(watchAmount) || 0
+      const includedCount = includedMembers.size
+      const evenAmount = includedCount > 0 ? amount / includedCount : 0
       const newSplits = members.map(m => ({
         memberId: m.id,
-        amount: evenAmount,
-        percentage: 100 / members.length,
+        amount: includedMembers.has(m.id) ? evenAmount : 0,
+        percentage: includedMembers.has(m.id) ? (100 / includedCount) : 0,
+        included: includedMembers.has(m.id),
       }))
       setSplitsInput(newSplits)
     }
-  }, [members.length, watchAmount, watchSplitType, setValue])
+  }, [members.length, watchAmount, watchSplitType, includedMembers])
 
   const fetchData = async () => {
     const [groupRes, membersRes, expenseRes, splitsRes] = await Promise.all([
@@ -113,17 +129,47 @@ export default function EditExpensePage() {
     }
 
     if (splitsRes.data && membersRes.data) {
+      // Only include members that have a split record for this expense
+      const splitMemberIds = new Set(splitsRes.data?.map((s: ExpenseSplit) => s.member_id) || [])
+      setIncludedMembers(splitMemberIds)
+      
       const memberSplits = membersRes.data.map(m => {
         const split = splitsRes.data?.find(s => s.member_id === m.id)
         return {
           memberId: m.id,
           amount: split ? Number(split.amount) : 0,
           percentage: split ? Number(split.percentage || 0) : 0,
+          included: !!split,
         }
       })
       setSplitsInput(memberSplits)
     }
   }
+
+  const toggleIncludedMember = (memberId: string) => {
+    setIncludedMembers(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(memberId)) {
+        newSet.delete(memberId)
+      } else {
+        newSet.add(memberId)
+      }
+      return newSet
+    })
+  }
+
+  const handleDeleteReceipt = () => {
+    setReceiptPreview(null)
+    setReceiptFile(null)
+    setExistingReceiptUrl(null)
+    setShowDeleteReceiptDialog(false)
+  }
+
+  const sortedMembers = [...members].sort((a, b) => {
+    if (a.id === watchPayerId) return -1
+    if (b.id === watchPayerId) return 1
+    return 0
+  })
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -173,7 +219,14 @@ export default function EditExpensePage() {
   }
 
   const onSubmit = async (data: ExpenseFormData) => {
-    const totalSplit = splitsInput.reduce((sum, s) => sum + Number(s.amount), 0)
+    const activeSplits = splitsInput.filter(s => includedMembers.has(s.memberId))
+    
+    if (activeSplits.length === 0) {
+      toast.error("At least one person must be included in the split")
+      return
+    }
+
+    const totalSplit = activeSplits.reduce((sum, s) => sum + Number(s.amount), 0)
     if (Math.abs(totalSplit - Number(data.amount)) > 0.01) {
       toast.error("Split amounts must equal the total amount")
       return
@@ -221,7 +274,7 @@ export default function EditExpensePage() {
         .delete()
         .eq("expense_id", expenseId)
 
-      const splitsData = splitsInput.map(s => ({
+      const splitsData = activeSplits.map(s => ({
         expense_id: expenseId,
         member_id: s.memberId,
         amount: s.amount,
@@ -249,8 +302,6 @@ export default function EditExpensePage() {
   }
 
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this expense?")) return
-
     setLoading(true)
     try {
       const { error } = await supabase
@@ -271,12 +322,75 @@ export default function EditExpensePage() {
       toast.error("Failed to delete expense")
     } finally {
       setLoading(false)
+      setShowDeleteDialog(false)
     }
   }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      <header className="bg-white border-b sticky top-0 z-10">
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Expense</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this expense? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={loading}>
+              {loading ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDeleteReceiptDialog} onOpenChange={setShowDeleteReceiptDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Receipt</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove this receipt image? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteReceiptDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteReceipt}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showImageZoom} onOpenChange={setShowImageZoom}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-0 bg-transparent border-none">
+          <DialogHeader className="absolute top-2 right-2 z-10">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowImageZoom(false)}
+              className="bg-black/50 hover:bg-black/70 rounded-full text-white"
+            >
+              <X className="h-6 w-6" />
+            </Button>
+          </DialogHeader>
+          {receiptPreview && (
+            <div className="flex items-center justify-center min-h-[80vh]">
+              <img
+                src={receiptPreview}
+                alt="Receipt zoomed"
+                className="max-w-full max-h-[85vh] object-contain rounded-lg"
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <header className="bg-white dark:bg-gray-900 border-b sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -287,7 +401,7 @@ export default function EditExpensePage() {
               </Link>
               <h1 className="text-xl font-bold">Modify Expense</h1>
             </div>
-            <Button variant="destructive" size="sm" onClick={handleDelete} disabled={loading}>
+            <Button variant="destructive" size="sm" onClick={() => setShowDeleteDialog(true)} disabled={loading}>
               <Trash2 className="mr-2 h-4 w-4" />
               Delete
             </Button>
@@ -317,14 +431,20 @@ export default function EditExpensePage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="amount">Amount</Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0.00"
-                    {...register("amount")}
-                  />
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
+                      {getCurrencySymbol(watch("currency"))}
+                    </span>
+                    <Input
+                      id="amount"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      className="pl-7"
+                      {...register("amount")}
+                    />
+                  </div>
                   {errors.amount && (
                     <p className="text-sm text-red-500">{errors.amount.message}</p>
                   )}
@@ -396,17 +516,31 @@ export default function EditExpensePage() {
                       className="hidden"
                       onChange={handleFileChange}
                     />
-                    <div className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-gray-50">
+                    <div className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-gray-50 dark:hover:bg-gray-800">
                       <Upload className="h-4 w-4" />
                       <span>Change</span>
                     </div>
                   </label>
                   {receiptPreview && (
-                    <img
-                      src={receiptPreview}
-                      alt="Receipt"
-                      className="h-16 w-16 object-cover rounded-md"
-                    />
+                    <div className="relative group">
+                      <img
+                        src={receiptPreview}
+                        alt="Receipt"
+                        className="h-16 w-16 object-cover rounded-md cursor-pointer"
+                        onClick={() => setShowImageZoom(true)}
+                      />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setShowDeleteReceiptDialog(true)
+                        }}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Delete receipt"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -442,57 +576,70 @@ export default function EditExpensePage() {
               <Separator />
 
               <div className="space-y-3">
-                {members.map((member, index) => (
-                  <div key={member.id} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                        <span className="text-sm font-medium">
-                          {member.display_name.charAt(0).toUpperCase()}
-                        </span>
+                {sortedMembers.map((member) => {
+                  const originalIndex = members.findIndex(m => m.id === member.id)
+                  const isIncluded = includedMembers.has(member.id)
+                  return (
+                    <div key={member.id} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleIncludedMember(member.id)}
+                          className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                            isIncluded
+                              ? "bg-primary border-primary text-primary-foreground"
+                              : "border-gray-300 dark:border-gray-600"
+                          }`}
+                          aria-label={isIncluded ? `Exclude ${member.display_name || "Guest"}` : `Include ${member.display_name || "Guest"}`}
+                        >
+                          {isIncluded && <Check className="h-3 w-3" />}
+                        </button>
+                        <MemberAvatar name={member.display_name} size="sm" />
+                        <span className={!isIncluded ? "text-gray-400" : ""}>{member.display_name || "Guest"}</span>
+                        {member.id === watchPayerId && (
+                          <Badge variant="secondary" className="text-xs">Payer</Badge>
+                        )}
                       </div>
-                      <span>{member.display_name}</span>
-                      {member.id === watchPayerId && (
-                        <Badge variant="secondary" className="text-xs">Payer</Badge>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {watchSplitType === "percentage" ? (
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              className="w-20 h-8"
+                              value={splitsInput[originalIndex]?.percentage?.toFixed(1) || "0"}
+                              onChange={(e) => handleSplitChange(originalIndex, "percentage", Number(e.target.value))}
+                              disabled={!isIncluded}
+                            />
+                            <span className="text-sm">%</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <span className="text-sm text-gray-500 dark:text-gray-400">{getCurrencySymbol(watch("currency"))}</span>
+                            <Input
+                              type="number"
+                              className="w-24 h-8"
+                              step="0.01"
+                              value={splitsInput[originalIndex]?.amount?.toFixed(2) || "0"}
+                              onChange={(e) => handleSplitChange(originalIndex, "amount", Number(e.target.value))}
+                              disabled={watchSplitType === "even" || !isIncluded}
+                            />
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {watchSplitType === "percentage" ? (
-                        <div className="flex items-center gap-1">
-                          <Input
-                            type="number"
-                            className="w-20 h-8"
-                            value={splitsInput[index]?.percentage?.toFixed(1) || "0"}
-                            onChange={(e) => handleSplitChange(index, "percentage", Number(e.target.value))}
-                          />
-                          <span className="text-sm">%</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1">
-                          <span className="text-sm text-gray-500">{getCurrencySymbol(watch("currency"))}</span>
-                          <Input
-                            type="number"
-                            className="w-24 h-8"
-                            step="0.01"
-                            value={splitsInput[index]?.amount?.toFixed(2) || "0"}
-                            onChange={(e) => handleSplitChange(index, "amount", Number(e.target.value))}
-                            disabled={watchSplitType === "even"}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
 
               <div className="pt-2 border-t">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Total</span>
+                  <span className="text-gray-500 dark:text-gray-400">Total</span>
                   <span className="font-semibold">
                     {getCurrencySymbol(watch("currency"))}{Number(watchAmount || 0).toFixed(2)}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm mt-1">
-                  <span className="text-gray-500">Split Total</span>
+                  <span className="text-gray-500 dark:text-gray-400">Split Total ({includedMembers.size} people)</span>
                   <span className={`font-semibold ${
                     Math.abs((splitsInput.reduce((sum, s) => sum + Number(s.amount), 0)) - Number(watchAmount || 0)) > 0.01
                       ? "text-red-500"

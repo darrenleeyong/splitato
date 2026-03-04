@@ -956,7 +956,7 @@ export default function GroupDashboardPage() {
                                     size="sm"
                                     onClick={() => {
                                       setEditingMemberId(member.id)
-                                      setMemberNameInput(member.display_name)
+                                      setMemberNameInput(member.display_name || "")
                                     }}
                                     aria-label={`Edit ${member.display_name}'s name`}
                                   >

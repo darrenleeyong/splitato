@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { ArrowLeft, Trash2, UserPlus, Shield, Copy, Check, Pencil, Plus, X, Eye, EyeOff } from "lucide-react"
+import { ArrowLeft, Trash2, UserPlus, Shield, Copy, Check, Pencil, Plus, X, Eye, EyeOff, AlertTriangle, RefreshCw, Home } from "lucide-react"
 import { toast } from "sonner"
 import { CURRENCIES } from "@/lib/constants"
 import { useGroup } from "@/hooks/useGroup"
@@ -56,7 +56,10 @@ export default function SettingsPage() {
   const { verifyPin, isPinVerified } = useGroup()
 
   const [loading, setLoading] = useState(true)
+  const [needsPinVerification, setNeedsPinVerification] = useState<boolean | null>(null)
   const [verifyingPin, setVerifyingPin] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [loadingTimeout, setLoadingTimeout] = useState(false)
   const [pinInput, setPinInput] = useState("")
   const [group, setGroup] = useState<Group | null>(null)
   const [members, setMembers] = useState<GroupMember[]>([])
@@ -99,37 +102,90 @@ export default function SettingsPage() {
   })
 
   useEffect(() => {
-    if (isPinVerified(groupId)) {
-      fetchData()
-    } else {
-      setLoading(false)
-    }
+    checkPinAndLoad()
   }, [groupId, isPinVerified])
 
-  const fetchData = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    setCurrentUserId(user?.id || null)
+  const checkPinAndLoad = async () => {
+    // Set a timeout to show error message if loading takes too long (5 minutes)
+    const timeoutId = setTimeout(() => {
+      setLoadingTimeout(true)
+    }, 300000) // 5 minutes
 
-    const [groupRes, membersRes] = await Promise.all([
-      supabase.from("groups").select("*").eq("id", groupId).single(),
-      supabase.from("group_members").select("*").eq("group_id", groupId),
-    ])
+    try {
+      // First check if the group has a PIN and get basic info
+      const { data: groupData, error: groupError } = await supabase
+        .from("groups")
+        .select("pin_code, name, group_code")
+        .eq("id", groupId)
+        .single()
 
-    setGroup(groupRes.data)
-    setMembers(membersRes.data || [])
-    setIsOwner(groupRes.data?.owner_id === user?.id)
+      setGroup(groupData as Group | null)
 
-    if (groupRes.data) {
-      groupNameForm.setValue("name", groupRes.data.name)
-      currencyForm.setValue("defaultCurrency", groupRes.data.default_currency)
+      if (groupError) {
+        clearTimeout(timeoutId)
+        setError("Failed to load group. The group may not exist or you may not have access.")
+        setLoading(false)
+        return
+      }
+
+      // If no PIN is set, allow access
+      if (!groupData?.pin_code) {
+        clearTimeout(timeoutId)
+        setNeedsPinVerification(false)
+        return
+      }
+
+      // If PIN is set, check if already verified
+      setNeedsPinVerification(true)
+      if (isPinVerified(groupId)) {
+        fetchData()
+      } else {
+        clearTimeout(timeoutId)
+        setLoading(false)
+      }
+    } catch (err) {
+      clearTimeout(timeoutId)
+      setError("An unexpected error occurred. Please try again.")
+      setLoading(false)
     }
+  }
 
-    const expenses = await supabase.from("expenses").select("payer_id").eq("group_id", groupId)
-    const counts: Record<string, number> = {}
-    expenses.data?.forEach(e => {
-      counts[e.payer_id] = (counts[e.payer_id] || 0) + 1
-    })
-    setMemberExpenseCounts(counts)
+  const fetchData = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      setCurrentUserId(user?.id || null)
+
+      const [groupRes, membersRes] = await Promise.all([
+        supabase.from("groups").select("*").eq("id", groupId).single(),
+        supabase.from("group_members").select("*").eq("group_id", groupId),
+      ])
+
+      if (groupRes.error) {
+        setError("Failed to load group data. Please try again.")
+        setLoading(false)
+        return
+      }
+
+      setGroup(groupRes.data)
+      setMembers(membersRes.data || [])
+      setIsOwner(groupRes.data?.owner_id === user?.id)
+
+      if (groupRes.data) {
+        groupNameForm.setValue("name", groupRes.data.name)
+        currencyForm.setValue("defaultCurrency", groupRes.data.default_currency)
+      }
+
+      const expenses = await supabase.from("expenses").select("payer_id").eq("group_id", groupId)
+      const counts: Record<string, number> = {}
+      expenses.data?.forEach(e => {
+        counts[e.payer_id] = (counts[e.payer_id] || 0) + 1
+      })
+      setMemberExpenseCounts(counts)
+      setLoading(false)
+    } catch (err) {
+      setError("Failed to load data. Please try again.")
+      setLoading(false)
+    }
   }
 
   const handlePinVerify = async (e: React.FormEvent) => {
@@ -426,14 +482,112 @@ export default function SettingsPage() {
 
   const startEditingMember = (member: GroupMember) => {
     setEditingMemberId(member.id)
-    memberNameForm.setValue("displayName", member.display_name)
+    memberNameForm.setValue("displayName", member.display_name || "")
   }
 
-  if (!isPinVerified(groupId)) {
+  // Show error if any
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/20">
+              <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
+            </div>
+            <CardTitle className="text-gray-900 dark:text-white">Error</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-center text-gray-500 dark:text-gray-400">{error}</p>
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={() => {
+                  setError(null)
+                  setLoading(true)
+                  setNeedsPinVerification(null)
+                  checkPinAndLoad()
+                }}
+                className="w-full bg-[#1A1A1A] hover:bg-[#2D2D2D] dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Try Again
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => router.push(`/groups/${groupId}`)}
+                className="w-full dark:border-gray-600 dark:hover:bg-gray-800 dark:text-gray-200"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Group
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Show loading timeout message
+  if (loadingTimeout) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900/20">
+              <AlertTriangle className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
+            </div>
+            <CardTitle className="text-gray-900 dark:text-white">Loading Taking Too Long</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-center text-gray-500 dark:text-gray-400">
+              The page is taking longer than expected to load. This might be due to network issues.
+            </p>
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={() => {
+                  setLoadingTimeout(false)
+                  setLoading(true)
+                  checkPinAndLoad()
+                }}
+                className="w-full bg-[#1A1A1A] hover:bg-[#2D2D2D] dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Try Again
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => router.push("/")}
+                className="w-full dark:border-gray-600 dark:hover:bg-gray-800 dark:text-gray-200"
+              >
+                <Home className="mr-2 h-4 w-4" />
+                Go to Home
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Show loading while checking PIN status
+  if (needsPinVerification === null) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+        <p className="text-gray-500 dark:text-gray-400">Loading...</p>
+      </div>
+    )
+  }
+
+  if (needsPinVerification && !isPinVerified(groupId)) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
         <Card className="w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
           <CardHeader>
+            {group && (
+              <div className="mb-2 text-center">
+                <p className="text-lg font-semibold text-gray-900 dark:text-white">{group.name}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Code: {group.group_code}</p>
+              </div>
+            )}
             <CardTitle className="text-gray-900 dark:text-white">Enter Group PIN</CardTitle>
             <CardDescription className="dark:text-gray-400">Enter the 4-digit PIN to access settings</CardDescription>
           </CardHeader>

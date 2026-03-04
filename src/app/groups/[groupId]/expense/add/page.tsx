@@ -15,14 +15,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { ArrowLeft, Plus, Trash2, Upload, Calculator } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, Upload, Calculator, Check, X } from "lucide-react"
 import { toast } from "sonner"
 import { CURRENCIES, getCurrencySymbol } from "@/lib/constants"
 import type { Group, GroupMember } from "@/lib/supabase/types"
+import { MemberAvatar } from "@/components/ui/avatar"
 
 const expenseSchema = z.object({
   description: z.string().min(1, "Description is required"),
-  amount: z.coerce.number().min(0.01, "Amount must be greater than 0"),
+  amount: z.coerce.number({ message: "Amount must be a valid number" }).min(0.01, "Amount must be greater than 0"),
   currency: z.string(),
   date: z.string().min(1, "Date is required"),
   payerId: z.string().min(1, "Payer is required"),
@@ -45,6 +46,7 @@ export default function AddExpensePage() {
   const [loading, setLoading] = useState(false)
   const [group, setGroup] = useState<Group | null>(null)
   const [members, setMembers] = useState<GroupMember[]>([])
+  const [includedMembers, setIncludedMembers] = useState<Set<string>>(new Set())
   const [receiptFile, setReceiptFile] = useState<File | null>(null)
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
 
@@ -59,7 +61,7 @@ export default function AddExpensePage() {
     resolver: zodResolver(expenseSchema),
     defaultValues: {
       description: "",
-      amount: 0,
+      amount: "",
       currency: "USD",
       date: new Date().toISOString().split("T")[0],
       payerId: "",
@@ -83,15 +85,17 @@ export default function AddExpensePage() {
 
   useEffect(() => {
     if (members.length > 0 && watchSplitType === "even") {
-      const evenAmount = Number(watchAmount) / members.length
+      const amount = Number(watchAmount) || 0
+      const includedCount = includedMembers.size
+      const evenAmount = includedCount > 0 ? amount / includedCount : 0
       const newSplits = members.map(m => ({
         memberId: m.id,
-        amount: evenAmount,
-        percentage: 100 / members.length,
+        amount: includedMembers.has(m.id) ? evenAmount : 0,
+        percentage: includedMembers.has(m.id) ? (100 / includedCount) : 0,
       }))
       setValue("splits", newSplits)
     }
-  }, [members.length, watchAmount, watchSplitType, setValue])
+  }, [members.length, watchAmount, watchSplitType, includedMembers, setValue])
 
   const fetchGroupData = async () => {
     const [groupRes, membersRes] = await Promise.all([
@@ -100,14 +104,38 @@ export default function AddExpensePage() {
     ])
 
     setGroup(groupRes.data)
-    setMembers(membersRes.data || [])
-    if (membersRes.data && membersRes.data.length > 0) {
-      setValue("payerId", membersRes.data[0].id)
+    const fetchedMembers = membersRes.data || []
+    setMembers(fetchedMembers)
+    
+    // Initialize all members as included
+    const allMemberIds = new Set(fetchedMembers.map((m: GroupMember) => m.id))
+    setIncludedMembers(allMemberIds)
+    
+    if (fetchedMembers.length > 0) {
+      setValue("payerId", fetchedMembers[0].id)
     }
     if (groupRes.data) {
       setValue("currency", groupRes.data.default_currency)
     }
   }
+
+  const toggleIncludedMember = (memberId: string) => {
+    setIncludedMembers(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(memberId)) {
+        newSet.delete(memberId)
+      } else {
+        newSet.add(memberId)
+      }
+      return newSet
+    })
+  }
+
+  const sortedMembers = [...members].sort((a, b) => {
+    if (a.id === watchPayerId) return -1
+    if (b.id === watchPayerId) return 1
+    return 0
+  })
 
   const getGroupCurrencies = () => {
     if (!group) return CURRENCIES
@@ -117,27 +145,80 @@ export default function AddExpensePage() {
     return CURRENCIES.filter(c => currencies.includes(c.code))
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const img = new Image()
+        img.onload = () => {
+          const canvas = document.createElement("canvas")
+          const maxSize = 800
+          let width = img.width
+          let height = img.height
+
+          if (width > height) {
+            if (width > maxSize) {
+              height = (height * maxSize) / width
+              width = maxSize
+            }
+          } else {
+            if (height > maxSize) {
+              width = (width * maxSize) / height
+              height = maxSize
+            }
+          }
+
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext("2d")
+          ctx?.drawImage(img, 0, 0, width, height)
+
+          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.7)
+          resolve(compressedDataUrl)
+        }
+        img.onerror = reject
+        img.src = e.target?.result as string
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
       setReceiptFile(file)
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setReceiptPreview(reader.result as string)
+      try {
+        const compressedPreview = await compressImage(file)
+        setReceiptPreview(compressedPreview)
+      } catch {
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          setReceiptPreview(reader.result as string)
+        }
+        reader.readAsDataURL(file)
       }
-      reader.readAsDataURL(file)
     }
   }
 
-  const uploadReceipt = async (expenseId: string): Promise<string | null> => {
-    if (!receiptFile) return null
+  const removeReceipt = () => {
+    setReceiptFile(null)
+    setReceiptPreview(null)
+  }
 
-    const fileExt = receiptFile.name.split(".").pop()
+  const uploadReceipt = async (expenseId: string): Promise<string | null> => {
+    if (!receiptPreview) return null
+
+    const fileExt = "jpg"
     const fileName = `${expenseId}.${fileExt}`
+
+    // Convert base64 to blob for upload
+    const response = await fetch(receiptPreview)
+    const blob = await response.blob()
 
     const { error: uploadError } = await supabase.storage
       .from("receipts")
-      .upload(fileName, receiptFile, { upsert: true })
+      .upload(fileName, blob, { upsert: true })
 
     if (uploadError) {
       toast.error("Failed to upload receipt")
@@ -152,12 +233,14 @@ export default function AddExpensePage() {
   }
 
   const onSubmit = async (data: ExpenseFormData) => {
-    if (data.splits.length === 0) {
-      toast.error("At least one split is required")
+    const activeSplits = data.splits.filter(s => includedMembers.has(s.memberId))
+    
+    if (activeSplits.length === 0) {
+      toast.error("At least one person must be included in the split")
       return
     }
 
-    const totalSplit = data.splits.reduce((sum, s) => sum + Number(s.amount), 0)
+    const totalSplit = activeSplits.reduce((sum, s) => sum + Number(s.amount), 0)
     if (Math.abs(totalSplit - Number(data.amount)) > 0.01) {
       toast.error("Split amounts must equal the total amount")
       return
@@ -188,7 +271,7 @@ export default function AddExpensePage() {
       }
 
       // Upload receipt if exists
-      if (receiptFile && expense) {
+      if (receiptPreview && expense) {
         const receiptUrl = await uploadReceipt(expense.id)
         if (receiptUrl) {
           await supabase
@@ -198,8 +281,8 @@ export default function AddExpensePage() {
         }
       }
 
-      // Create splits
-      const splitsData = data.splits.map(s => ({
+      // Create splits - only include active members
+      const splitsData = activeSplits.map(s => ({
         expense_id: expense.id,
         member_id: s.memberId,
         amount: s.amount,
@@ -249,7 +332,7 @@ export default function AddExpensePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      <header className="bg-white border-b sticky top-0 z-10">
+      <header className="bg-white dark:bg-gray-900 border-b sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4">
           <div className="flex items-center gap-3">
             <Link href={`/groups/${groupId}`}>
@@ -284,14 +367,20 @@ export default function AddExpensePage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="amount">Amount</Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0.00"
-                    {...register("amount")}
-                  />
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
+                      {getCurrencySymbol(watch("currency"))}
+                    </span>
+                    <Input
+                      id="amount"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      className="pl-7"
+                      {...register("amount")}
+                    />
+                  </div>
                   {errors.amount && (
                     <p className="text-sm text-red-500">{errors.amount.message}</p>
                   )}
@@ -363,17 +452,27 @@ export default function AddExpensePage() {
                       className="hidden"
                       onChange={handleFileChange}
                     />
-                    <div className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-gray-50">
+                    <div className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-gray-50 dark:hover:bg-gray-800">
                       <Upload className="h-4 w-4" />
                       <span>Upload</span>
                     </div>
                   </label>
                   {receiptPreview && (
-                    <img
-                      src={receiptPreview}
-                      alt="Receipt preview"
-                      className="h-16 w-16 object-cover rounded-md"
-                    />
+                    <div className="relative group">
+                      <img
+                        src={receiptPreview}
+                        alt="Receipt preview"
+                        className="h-16 w-16 object-cover rounded-md"
+                      />
+                      <button
+                        type="button"
+                        onClick={removeReceipt}
+                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Remove receipt"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -409,58 +508,71 @@ export default function AddExpensePage() {
               <Separator />
 
               <div className="space-y-3">
-                {members.map((member, index) => (
-                  <div key={member.id} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                        <span className="text-sm font-medium">
-                          {member.display_name.charAt(0).toUpperCase()}
-                        </span>
+                {sortedMembers.map((member) => {
+                  const originalIndex = members.findIndex(m => m.id === member.id)
+                  const isIncluded = includedMembers.has(member.id)
+                  return (
+                    <div key={member.id} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleIncludedMember(member.id)}
+                          className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                            isIncluded
+                              ? "bg-primary border-primary text-primary-foreground"
+                              : "border-gray-300 dark:border-gray-600"
+                          }`}
+                          aria-label={isIncluded ? `Exclude ${member.display_name || "Guest"}` : `Include ${member.display_name || "Guest"}`}
+                        >
+                          {isIncluded && <Check className="h-3 w-3" />}
+                        </button>
+                        <MemberAvatar name={member.display_name} size="sm" />
+                        <span className={!isIncluded ? "text-gray-400" : ""}>{member.display_name || "Guest"}</span>
+                        {member.id === watchPayerId && (
+                          <Badge variant="secondary" className="text-xs">Payer</Badge>
+                        )}
                       </div>
-                      <span>{member.display_name}</span>
-                      {member.id === watchPayerId && (
-                        <Badge variant="secondary" className="text-xs">Payer</Badge>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {watchSplitType === "percentage" ? (
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              className="w-20 h-8"
+                              value={(Number(fields[originalIndex]?.percentage) || 0).toFixed(1)}
+                              onChange={(e) => handlePercentageChange(originalIndex, Number(e.target.value))}
+                              disabled={!isIncluded}
+                            />
+                            <span className="text-sm">%</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <span className="text-sm text-gray-500 dark:text-gray-400">{getCurrencySymbol(watch("currency"))}</span>
+                            <Input
+                              type="number"
+                              className="w-24 h-8"
+                              step="0.01"
+                              {...register(`splits.${originalIndex}.amount` as const, {
+                                valueAsNumber: true,
+                              })}
+                              disabled={watchSplitType === "even" || !isIncluded}
+                            />
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {watchSplitType === "percentage" ? (
-                        <div className="flex items-center gap-1">
-                          <Input
-                            type="number"
-                            className="w-20 h-8"
-                            value={(Number(fields[index]?.percentage) || 0).toFixed(1)}
-                            onChange={(e) => handlePercentageChange(index, Number(e.target.value))}
-                          />
-                          <span className="text-sm">%</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1">
-                          <span className="text-sm text-gray-500">{getCurrencySymbol(watch("currency"))}</span>
-                          <Input
-                            type="number"
-                            className="w-24 h-8"
-                            step="0.01"
-                            {...register(`splits.${index}.amount` as const, {
-                              valueAsNumber: true,
-                            })}
-                            disabled={watchSplitType === "even"}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
 
               <div className="pt-2 border-t">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Total</span>
+                  <span className="text-gray-500 dark:text-gray-400">Total</span>
                   <span className="font-semibold">
                     {getCurrencySymbol(watch("currency"))}{Number(watchAmount || 0).toFixed(2)}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm mt-1">
-                  <span className="text-gray-500">Split Total</span>
+                  <span className="text-gray-500 dark:text-gray-400">Split Total ({includedMembers.size} people)</span>
                   <span className={`font-semibold ${
                     Math.abs((fields.reduce((sum, f) => sum + Number(f.amount || 0), 0)) - Number(watchAmount || 0)) > 0.01
                       ? "text-red-500"
