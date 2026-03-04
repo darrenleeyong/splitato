@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter, useParams } from "next/navigation"
+import { useRouter, useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -25,7 +25,6 @@ import {
   Pencil,
   Trash2,
   UserPlus,
-  X,
   Copy,
   Check,
   Shield,
@@ -33,7 +32,8 @@ import {
   EyeOff,
   AlertTriangle,
   RefreshCw,
-  Home
+  Home,
+  X,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useGroup } from "@/hooks/useGroup"
@@ -44,9 +44,13 @@ import { MemberAvatar } from "@/components/ui/avatar"
 export default function GroupDashboardPage() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const groupId = params.groupId as string
   const supabase = createClient()
   const { verifyPin, isPinVerified, clearPinVerification } = useGroup()
+
+  // Get tab from URL or default to "expenses"
+  const currentTab = searchParams.get("tab") || "expenses"
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -60,6 +64,8 @@ export default function GroupDashboardPage() {
   const [settlements, setSettlements] = useState<Settlement[]>([])
   const [expenseSplits, setExpenseSplits] = useState<ExpenseSplit[]>([])
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [showImageZoom, setShowImageZoom] = useState(false)
+  const [zoomedImageUrl, setZoomedImageUrl] = useState<string | null>(null)
 
   // Settings state
   const [editingName, setEditingName] = useState(false)
@@ -80,14 +86,18 @@ export default function GroupDashboardPage() {
   const [isPeopleOpen, setIsPeopleOpen] = useState(false)
   const [showDeleteMemberDialog, setShowDeleteMemberDialog] = useState(false)
   const [memberToDelete, setMemberToDelete] = useState<{id: string, name: string} | null>(null)
+  const [showSettlementDetails, setShowSettlementDetails] = useState(false)
+  const [selectedSettlement, setSelectedSettlement] = useState<Settlement | null>(null)
+  const [showDeleteSettlementDialog, setShowDeleteSettlementDialog] = useState(false)
+  const [settlementToDelete, setSettlementToDelete] = useState<Settlement | null>(null)
 
   useEffect(() => {
-    // Set a timeout to show error message if loading takes too long
+    // Set a timeout to show error message if loading takes too long (5 minutes)
     const timeoutId = setTimeout(() => {
       if (loading) {
         setLoadingTimeout(true)
       }
-    }, 120000) // 2 minutes
+    }, 300000) // 5 minutes
 
     // Fetch basic group info for PIN screen
     fetchBasicGroupInfo()
@@ -123,12 +133,19 @@ export default function GroupDashboardPage() {
       const { data: { user } } = await supabase.auth.getUser()
       setCurrentUserId(user?.id || null)
 
+      // First get all expense IDs for this group
+      const { data: expenseIdsData } = await supabase.from("expenses").select("id").eq("group_id", groupId)
+      const expenseIds = expenseIdsData?.map(e => e.id) || []
+      
+      // Then fetch all data including splits filtered by expense IDs
       const [groupRes, membersRes, expensesRes, settlementsRes, splitsRes] = await Promise.all([
         supabase.from("groups").select("*").eq("id", groupId).single(),
         supabase.from("group_members").select("*").eq("group_id", groupId),
         supabase.from("expenses").select("*").eq("group_id", groupId).order("date", { ascending: false }),
         supabase.from("settlements").select("*").eq("group_id", groupId).order("date", { ascending: false }),
-        supabase.from("expense_splits").select("*")
+        expenseIds.length > 0 
+          ? supabase.from("expense_splits").select("*").in("expense_id", expenseIds)
+          : Promise.resolve({ data: [], error: null })
       ])
 
       if (groupRes.error) {
@@ -342,6 +359,34 @@ export default function GroupDashboardPage() {
     setSaving(false)
   }
 
+  const handleDeleteSettlement = async () => {
+    if (!settlementToDelete) return
+    setSaving(true)
+    const { error } = await supabase
+      .from("settlements")
+      .delete()
+      .eq("id", settlementToDelete.id)
+    if (error) {
+      toast.error(error.message)
+    } else {
+      toast.success("Settlement deleted")
+      setShowDeleteSettlementDialog(false)
+      setSettlementToDelete(null)
+      fetchGroupData()
+    }
+    setSaving(false)
+  }
+
+  const openSettlementDetails = (settlement: Settlement) => {
+    setSelectedSettlement(settlement)
+    setShowSettlementDetails(true)
+  }
+
+  const openDeleteSettlementDialog = (settlement: Settlement) => {
+    setSettlementToDelete(settlement)
+    setShowDeleteSettlementDialog(true)
+  }
+
   const handleCopyCode = async () => {
     if (group?.group_code) {
       await navigator.clipboard.writeText(group.group_code)
@@ -488,53 +533,103 @@ export default function GroupDashboardPage() {
   }
 
   // Calculate balances by currency
+  // Each expense: payer gets +amount, each split member gets -their share
+  // For "even" splits without split records: all members split equally
+  
   const allCurrencies = [
     group?.default_currency,
     group?.additional_currency_1,
     group?.additional_currency_2,
   ].filter(Boolean) as string[]
 
-  const balancesByCurrency: Record<string, Record<string, number>> = {}
+  const currentBalancesByCurrency: Record<string, Record<string, number>> = {}
+  const netBalancesByCurrency: Record<string, Record<string, number>> = {}
+  
+  // Initialize balances for all currencies
   allCurrencies.forEach(currency => {
-    balancesByCurrency[currency] = {}
-    members.forEach(m => balancesByCurrency[currency][m.id] = 0)
+    currentBalancesByCurrency[currency] = {}
+    netBalancesByCurrency[currency] = {}
+    members.forEach(m => {
+      currentBalancesByCurrency[currency][m.id] = 0
+      netBalancesByCurrency[currency][m.id] = 0
+    })
   })
 
+  // Process each expense (both current and net balances)
   expenses.forEach(expense => {
     const currency = expense.currency || group?.default_currency || "USD"
-    if (!balancesByCurrency[currency]) {
-      balancesByCurrency[currency] = {}
-      members.forEach(m => balancesByCurrency[currency][m.id] = 0)
+    
+    // Ensure currency exists in balances
+    if (!currentBalancesByCurrency[currency]) {
+      currentBalancesByCurrency[currency] = {}
+      netBalancesByCurrency[currency] = {}
+      members.forEach(m => {
+        currentBalancesByCurrency[currency][m.id] = 0
+        netBalancesByCurrency[currency][m.id] = 0
+      })
     }
-    balancesByCurrency[currency][expense.payer_id] = (balancesByCurrency[currency][expense.payer_id] || 0) + Number(expense.amount)
+    
+    // Credit the payer the full amount (they paid, so others owe them)
+    const currentPayerBalance = currentBalancesByCurrency[currency][expense.payer_id] || 0
+    const netPayerBalance = netBalancesByCurrency[currency][expense.payer_id] || 0
+    currentBalancesByCurrency[currency][expense.payer_id] = currentPayerBalance + Number(expense.amount)
+    netBalancesByCurrency[currency][expense.payer_id] = netPayerBalance + Number(expense.amount)
+    
+    // Get splits for this specific expense
+    const expenseSpecificSplits = expenseSplits.filter(s => s.expense_id === expense.id)
+    
+    if (expenseSpecificSplits.length > 0) {
+      // Use recorded splits - debit each member their recorded share
+      expenseSpecificSplits.forEach(split => {
+        const currentMemberBalance = currentBalancesByCurrency[currency][split.member_id] || 0
+        const netMemberBalance = netBalancesByCurrency[currency][split.member_id] || 0
+        currentBalancesByCurrency[currency][split.member_id] = currentMemberBalance - Number(split.amount)
+        netBalancesByCurrency[currency][split.member_id] = netMemberBalance - Number(split.amount)
+      })
+    } else if (expense.split_type === "even") {
+      // Even split without records - debit all members equally
+      const perPersonAmount = Number(expense.amount) / members.length
+      members.forEach(m => {
+        const currentMemberBalance = currentBalancesByCurrency[currency][m.id] || 0
+        const netMemberBalance = netBalancesByCurrency[currency][m.id] || 0
+        currentBalancesByCurrency[currency][m.id] = currentMemberBalance - perPersonAmount
+        netBalancesByCurrency[currency][m.id] = netMemberBalance - perPersonAmount
+      })
+    }
+    // For percentage/specific splits without records, no one is debited (edge case)
   })
 
-  expenseSplits.forEach(split => {
-    // Find the expense to get its currency
-    const expense = expenses.find(e => e.id === split.expense_id)
-    const currency = expense?.currency || group?.default_currency || "USD"
-    if (!balancesByCurrency[currency]) {
-      balancesByCurrency[currency] = {}
-      members.forEach(m => balancesByCurrency[currency][m.id] = 0)
-    }
-    balancesByCurrency[currency][split.member_id] = (balancesByCurrency[currency][split.member_id] || 0) - Number(split.amount)
-  })
-
+  // Process settlements ONLY in net balances (current balance = expenses only)
   settlements.forEach(settlement => {
-    // Settlements are in default currency
     const currency = group?.default_currency || "USD"
-    if (!balancesByCurrency[currency]) {
-      balancesByCurrency[currency] = {}
-      members.forEach(m => balancesByCurrency[currency][m.id] = 0)
+    
+    if (!netBalancesByCurrency[currency]) {
+      netBalancesByCurrency[currency] = {}
+      members.forEach(m => netBalancesByCurrency[currency][m.id] = 0)
     }
-    balancesByCurrency[currency][settlement.sender_id] = (balancesByCurrency[currency][settlement.sender_id] || 0) - Number(settlement.amount)
-    balancesByCurrency[currency][settlement.receiver_id] = (balancesByCurrency[currency][settlement.receiver_id] || 0) + Number(settlement.amount)
+    
+    const senderBalance = netBalancesByCurrency[currency][settlement.sender_id] || 0
+    const receiverBalance = netBalancesByCurrency[currency][settlement.receiver_id] || 0
+    
+    // Sender paid money, so their debt decreases (balance increases towards positive)
+    netBalancesByCurrency[currency][settlement.sender_id] = senderBalance + Number(settlement.amount)
+    // Receiver received money, so what they're owed decreases (balance decreases towards negative)
+    netBalancesByCurrency[currency][settlement.receiver_id] = receiverBalance - Number(settlement.amount)
   })
 
   const memberBalances = members.map(m => ({
     ...m,
     balances: allCurrencies.reduce((acc, currency) => {
-      acc[currency] = balancesByCurrency[currency]?.[m.id] || 0
+      acc[currency] = currentBalancesByCurrency[currency]?.[m.id] || 0
+      return acc
+    }, {} as Record<string, number>)
+  }))
+
+  // Net balances include settlements (what's still owed after settlements)
+  const netMemberBalances = members.map(m => ({
+    ...m,
+    balances: allCurrencies.reduce((acc, currency) => {
+      acc[currency] = netBalancesByCurrency[currency]?.[m.id] || 0
       return acc
     }, {} as Record<string, number>)
   }))
@@ -585,6 +680,139 @@ export default function GroupDashboardPage() {
             </Button>
             <Button variant="destructive" onClick={handleRemoveMember} disabled={saving}>
               {saving ? "Removing..." : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showImageZoom} onOpenChange={setShowImageZoom}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-0 bg-transparent border-none">
+          <DialogHeader className="absolute top-2 right-2 z-10">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowImageZoom(false)}
+              className="bg-black/50 hover:bg-black/70 rounded-full text-white"
+            >
+              <X className="h-6 w-6" />
+            </Button>
+          </DialogHeader>
+          {zoomedImageUrl && (
+            <div className="flex items-center justify-center min-h-[80vh] p-4">
+              <img
+                src={zoomedImageUrl}
+                alt="Receipt zoomed"
+                className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-lg"
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Settlement Details Dialog */}
+      <Dialog open={showSettlementDetails} onOpenChange={setShowSettlementDetails}>
+        <DialogContent className="dark:bg-gray-800 dark:border-gray-700">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900 dark:text-white">Settlement Details</DialogTitle>
+          </DialogHeader>
+          {selectedSettlement && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
+                <div className="text-center">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">From</p>
+                  <p className="font-semibold text-gray-900 dark:text-white">
+                    {members.find(m => m.id === selectedSettlement.sender_id)?.display_name || "Unknown"}
+                  </p>
+                </div>
+                <ArrowRight className="h-5 w-5 text-gray-400" />
+                <div className="text-center">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">To</p>
+                  <p className="font-semibold text-gray-900 dark:text-white">
+                    {members.find(m => m.id === selectedSettlement.receiver_id)?.display_name || "Unknown"}
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Amount</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">
+                    {getCurrencySymbol(group?.default_currency || "USD")}
+                    {Number(selectedSettlement.amount).toFixed(2)}
+                  </p>
+                </div>
+                <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Date</p>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                    {new Date(selectedSettlement.date).toLocaleDateString("en-US", {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric"
+                    })}
+                  </p>
+                </div>
+              </div>
+              <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
+                <p className="text-sm text-gray-500 dark:text-gray-400">Created</p>
+                <p className="text-sm text-gray-900 dark:text-white">
+                  {selectedSettlement.created_at
+                    ? new Date(selectedSettlement.created_at).toLocaleString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                        hour12: true
+                      })
+                    : "N/A"}
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setShowSettlementDetails(false)
+                openDeleteSettlementDialog(selectedSettlement!)
+              }}
+              className="flex-1"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
+            </Button>
+            <Button variant="outline" onClick={() => setShowSettlementDetails(false)} className="flex-1">
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Settlement Confirmation Dialog */}
+      <Dialog open={showDeleteSettlementDialog} onOpenChange={setShowDeleteSettlementDialog}>
+        <DialogContent className="dark:bg-gray-800 dark:border-gray-700">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900 dark:text-white">Delete Settlement</DialogTitle>
+            <DialogDescription className="dark:text-gray-400">
+              Are you sure you want to delete this settlement? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {settlementToDelete && (
+            <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Settlement details:</p>
+              <p className="text-gray-900 dark:text-white">
+                {members.find(m => m.id === settlementToDelete.sender_id)?.display_name} paid{" "}
+                {getCurrencySymbol(group?.default_currency || "USD")}{Number(settlementToDelete.amount).toFixed(2)} to{" "}
+                {members.find(m => m.id === settlementToDelete.receiver_id)?.display_name}
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteSettlementDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteSettlement} disabled={saving}>
+              {saving ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -770,7 +998,7 @@ export default function GroupDashboardPage() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-6">
-        <Tabs defaultValue="expenses" className="space-y-6">
+        <Tabs defaultValue={currentTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-2 bg-gray-100 dark:bg-gray-800">
             <TabsTrigger value="expenses" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700 data-[state=active]:shadow-sm">
               <Receipt className="h-4 w-4" />
@@ -832,12 +1060,17 @@ export default function GroupDashboardPage() {
                         <CardContent className="p-0">
                           {dayExpenses.map((expense, idx) => {
                             const expensePayer = members.find(m => m.id === expense.payer_id)
-                            const expenseSplitMembers = expenseSplits
-                              .filter(s => s.expense_id === expense.id)
-                              .map(s => members.find(m => m.id === s.member_id))
-                              .filter(Boolean) as GroupMember[]
                             
-                            const involvedMembers = expenseSplitMembers.length > 0 ? expenseSplitMembers : members
+                            // Get unique members from expense splits for this expense
+                            const expenseSplitMemberIds = expenseSplits
+                              .filter(s => s.expense_id === expense.id)
+                              .map(s => s.member_id)
+                            const uniqueMemberIds = [...new Set(expenseSplitMemberIds)]
+                            
+                            // Use split members if available, otherwise use all group members
+                            const involvedMembers = uniqueMemberIds.length > 0 
+                              ? uniqueMemberIds.map(id => members.find(m => m.id === id)).filter(Boolean) as GroupMember[]
+                              : members
                             const involvedCount = involvedMembers.length
                             const perPersonAmount = expense.split_type === "even" 
                               ? Number(expense.amount) / involvedCount
@@ -882,7 +1115,19 @@ export default function GroupDashboardPage() {
                                         {Number(expense.amount).toFixed(2)}
                                       </p>
                                       {expense.receipt_url && (
-                                        <Badge variant="secondary" className="text-xs">Receipt</Badge>
+                                        <div 
+                                          className="mt-1 cursor-pointer"
+                                          onClick={() => {
+                                            setZoomedImageUrl(expense.receipt_url)
+                                            setShowImageZoom(true)
+                                          }}
+                                        >
+                                          <img
+                                            src={expense.receipt_url}
+                                            alt="Receipt"
+                                            className="h-10 w-10 object-cover rounded-md border border-gray-200 dark:border-gray-600"
+                                          />
+                                        </div>
                                       )}
                                     </div>
                                   </div>
@@ -913,8 +1158,8 @@ export default function GroupDashboardPage() {
 
             <Card className="dark:bg-gray-800 dark:border-gray-700">
               <CardHeader>
-                <CardTitle className="text-gray-900 dark:text-white">Net Balances</CardTitle>
-                <CardDescription className="dark:text-gray-400">Positive = owed money · Negative = owes money</CardDescription>
+                <CardTitle className="text-gray-900 dark:text-white">Current Balances</CardTitle>
+                <CardDescription className="dark:text-gray-400">Based on expenses (settlements included)</CardDescription>
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
@@ -930,7 +1175,7 @@ export default function GroupDashboardPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {memberBalances.map(member => (
+                      {netMemberBalances.map(member => (
                         <tr key={member.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
@@ -940,10 +1185,17 @@ export default function GroupDashboardPage() {
                           </td>
                           {allCurrencies.map(currency => {
                             const balance = member.balances[currency] || 0
-                            const isPositive = balance >= 0
+                            const isPositive = balance > 0.01
+                            const isNegative = balance < -0.01
                             return (
                               <td key={currency} className="text-right py-3 px-4">
-                                <span className={`font-semibold ${isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                                <span className={`font-semibold ${
+                                  isPositive 
+                                    ? "text-green-600 dark:text-green-400" 
+                                    : isNegative 
+                                      ? "text-red-600 dark:text-red-400"
+                                      : "text-gray-400 dark:text-gray-500"
+                                }`}>
                                   {isPositive ? "+" : ""}{getCurrencySymbol(currency)}{balance.toFixed(2)}
                                 </span>
                               </td>
@@ -961,31 +1213,100 @@ export default function GroupDashboardPage() {
             <Card className="dark:bg-gray-800 dark:border-gray-700">
               <CardHeader>
                 <CardTitle className="text-gray-900 dark:text-white">Who Owes Whom</CardTitle>
-                <CardDescription className="dark:text-gray-400">Based on {group?.default_currency} balance</CardDescription>
+                <CardDescription className="dark:text-gray-400">Based on current balances (settlements included)</CardDescription>
               </CardHeader>
               <CardContent>
-                {memberBalances.filter(m => (m.balances[group?.default_currency || "USD"] || 0) < -0.01).map(debtor => {
-                  const creditor = memberBalances.find(m => (m.balances[group?.default_currency || "USD"] || 0) > 0.01)
-                  if (!creditor) return null
-                  
-                  const defaultCurrency = group?.default_currency || "USD"
-                  const amount = Math.min(Math.abs(debtor.balances[defaultCurrency] || 0), creditor.balances[defaultCurrency] || 0)
-                  if (amount < 0.01) return null
-                  
-                  return (
-                    <div key={`${debtor.id}-${creditor.id}`} className="flex items-center justify-between py-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-900 dark:text-white">{debtor.display_name}</span>
-                        <ArrowRight className="h-4 w-4 text-gray-400" />
-                        <span className="text-gray-900 dark:text-white">{creditor.display_name}</span>
+                {(() => {
+                  // Show debts for each currency using net balances (includes settlements)
+                  return allCurrencies.map(currency => {
+                    // Create lists of debtors and creditors for this currency using net balances
+                    const debtors = netMemberBalances
+                      .filter(m => (m.balances[currency] || 0) < -0.01)
+                      .map(m => ({ member: m, amount: Math.abs(m.balances[currency]) }))
+                      .sort((a, b) => b.amount - a.amount)
+                    
+                    const creditors = netMemberBalances
+                      .filter(m => (m.balances[currency] || 0) > 0.01)
+                      .map(m => ({ member: m, amount: m.balances[currency] }))
+                      .sort((a, b) => b.amount - a.amount)
+                    
+                    if (debtors.length === 0 || creditors.length === 0) {
+                      return null
+                    }
+                    
+                    // Calculate debts
+                    const debts: Array<{from: string, to: string, amount: number, fromId: string, toId: string}> = []
+                    let remainingDebtors = [...debtors]
+                    let remainingCreditors = [...creditors]
+                    
+                    while (remainingDebtors.length > 0 && remainingCreditors.length > 0) {
+                      const debtor = remainingDebtors[0]
+                      const creditor = remainingCreditors[0]
+                      
+                      const amount = Math.min(debtor.amount, creditor.amount)
+                      
+                      if (amount > 0.01) {
+                        debts.push({
+                          from: debtor.member.display_name || "Guest",
+                          to: creditor.member.display_name || "Guest",
+                          amount,
+                          fromId: debtor.member.id,
+                          toId: creditor.member.id
+                        })
+                      }
+                      
+                      debtor.amount -= amount
+                      creditor.amount -= amount
+                      
+                      if (debtor.amount < 0.01) {
+                        remainingDebtors.shift()
+                      }
+                      if (creditor.amount < 0.01) {
+                        remainingCreditors.shift()
+                      }
+                    }
+                    
+                    if (debts.length === 0) {
+                      return null
+                    }
+                    
+                    return (
+                      <div key={currency} className="mb-6 last:mb-0">
+                        <h3 className="font-medium text-gray-700 dark:text-gray-300 mb-3">{currency}</h3>
+                        <div className="space-y-2">
+                          {debts.map((debt, idx) => (
+                            <div key={`${currency}-${idx}`} className="flex items-center justify-between py-2">
+                              <div className="flex items-center gap-2">
+                                <MemberAvatar name={debt.from} size="sm" />
+                                <span className="text-gray-900 dark:text-white">{debt.from}</span>
+                                <ArrowRight className="h-4 w-4 text-gray-400" />
+                                <MemberAvatar name={debt.to} size="sm" />
+                                <span className="text-gray-900 dark:text-white">{debt.to}</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="font-semibold text-gray-900 dark:text-white">
+                                  {getCurrencySymbol(currency)}{debt.amount.toFixed(2)}
+                                </span>
+                                <Link
+                                  href={`/groups/${groupId}/settle?senderId=${debt.fromId}&receiverId=${debt.toId}&amount=${debt.amount}&currency=${currency}`}
+                                >
+                                  <Button size="sm" variant="outline" className="h-8">
+                                    Settle
+                                  </Button>
+                                </Link>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <span className="font-semibold text-gray-900 dark:text-white">
-                        {getCurrencySymbol(defaultCurrency)}{amount.toFixed(2)}
-                      </span>
-                    </div>
-                  )
-                })}
-                {memberBalances.every(m => Math.abs(m.balances[group?.default_currency || "USD"] || 0) < 0.01) && (
+                    )
+                  }).filter(Boolean)
+                })()}
+                {allCurrencies.every(currency => {
+                  const debtors = netMemberBalances.filter(m => (m.balances[currency] || 0) < -0.01)
+                  const creditors = netMemberBalances.filter(m => (m.balances[currency] || 0) > 0.01)
+                  return debtors.length === 0 || creditors.length === 0
+                }) && (
                   <p className="text-gray-500 dark:text-gray-400 text-center py-4">All settled up!</p>
                 )}
               </CardContent>
@@ -1004,19 +1325,46 @@ export default function GroupDashboardPage() {
                       const sender = members.find(m => m.id === settlement.sender_id)
                       const receiver = members.find(m => m.id === settlement.receiver_id)
                       return (
-                        <div key={settlement.id} className="flex items-center justify-between">
-                          <div className="text-sm">
+                        <div
+                          key={settlement.id}
+                          className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors"
+                          onClick={() => openSettlementDetails(settlement)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              openSettlementDetails(settlement)
+                            }
+                          }}
+                        >
+                          <div className="flex items-center gap-2 text-sm">
+                            <MemberAvatar name={sender?.display_name || null} size="sm" />
                             <span className="font-medium text-gray-900 dark:text-white">{sender?.display_name}</span>
                             <span className="text-gray-500 dark:text-gray-400"> paid </span>
+                            <MemberAvatar name={receiver?.display_name || null} size="sm" />
                             <span className="font-medium text-gray-900 dark:text-white">{receiver?.display_name}</span>
                           </div>
-                          <div className="text-right">
-                            <span className="font-semibold text-gray-900 dark:text-white">
-                              {getCurrencySymbol(group?.default_currency || "USD")}{Number(settlement.amount).toFixed(2)}
-                            </span>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                              {new Date(settlement.date).toLocaleDateString()}
-                            </p>
+                          <div className="flex items-center gap-3">
+                            <div className="text-right">
+                              <span className="font-semibold text-gray-900 dark:text-white">
+                                {getCurrencySymbol(group?.default_currency || "USD")}{Number(settlement.amount).toFixed(2)}
+                              </span>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {new Date(settlement.date).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                openDeleteSettlementDialog(settlement)
+                              }}
+                              aria-label="Delete settlement"
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
                           </div>
                         </div>
                       )
