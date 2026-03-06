@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS groups (
     group_code TEXT NOT NULL UNIQUE,
     pin_code TEXT NOT NULL,
     owner_id TEXT NOT NULL,
+    simplify_debts BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -18,7 +19,7 @@ CREATE TABLE IF NOT EXISTS group_members (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     group_id UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL, 
-    display_name TEXT NOT NULL,
+    display_name TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(group_id, user_id)
 );
@@ -96,6 +97,8 @@ CREATE POLICY "Anyone can update groups" ON groups FOR UPDATE USING (true);
 
 CREATE POLICY "Anyone can view group members" ON group_members FOR SELECT USING (true);
 CREATE POLICY "Anyone can add members" ON group_members FOR INSERT WITH CHECK (true);
+CREATE POLICY "Anyone can update members" ON group_members FOR UPDATE USING (true);
+CREATE POLICY "Anyone can delete members" ON group_members FOR DELETE USING (true);
 
 CREATE POLICY "Anyone can view expenses" ON expenses FOR SELECT USING (true);
 CREATE POLICY "Anyone can add expenses" ON expenses FOR INSERT WITH CHECK (true);
@@ -104,14 +107,20 @@ CREATE POLICY "Anyone can delete expenses" ON expenses FOR DELETE USING (true);
 
 CREATE POLICY "Anyone can view expense splits" ON expense_splits FOR SELECT USING (true);
 CREATE POLICY "Anyone can add expense splits" ON expense_splits FOR INSERT WITH CHECK (true);
+CREATE POLICY "Anyone can update expense splits" ON expense_splits FOR UPDATE USING (true);
+CREATE POLICY "Anyone can delete expense splits" ON expense_splits FOR DELETE USING (true);
 
 CREATE POLICY "Anyone can view settlements" ON settlements FOR SELECT USING (true);
 CREATE POLICY "Anyone can add settlements" ON settlements FOR INSERT WITH CHECK (true);
 CREATE POLICY "Anyone can delete settlements" ON settlements FOR DELETE USING (true);
 
--- 6. STORAGE BUCKET & POLICIES
+-- 6. STORAGE BUCKETS & POLICIES
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('receipts', 'receipts', true)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('avatars', 'avatars', true)
 ON CONFLICT (id) DO NOTHING;
 
 CREATE POLICY "Anyone can view receipts" ON storage.objects
@@ -119,3 +128,15 @@ CREATE POLICY "Anyone can view receipts" ON storage.objects
 
 CREATE POLICY "Anyone can upload receipts" ON storage.objects
     FOR INSERT WITH CHECK (bucket_id = 'receipts');
+
+CREATE POLICY "Anyone can view avatars" ON storage.objects
+    FOR SELECT USING (bucket_id = 'avatars');
+
+CREATE POLICY "Anyone can upload avatars" ON storage.objects
+    FOR INSERT WITH CHECK (bucket_id = 'avatars');
+
+CREATE POLICY "Anyone can update avatars" ON storage.objects
+    FOR UPDATE USING (bucket_id = 'avatars');
+
+CREATE POLICY "Anyone can delete avatars" ON storage.objects
+    FOR DELETE USING (bucket_id = 'avatars');
