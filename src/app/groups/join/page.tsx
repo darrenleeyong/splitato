@@ -10,18 +10,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { toast } from "sonner"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
+import { useGroup } from "@/hooks/useGroup"
 
 export default function JoinGroupPage() {
   const router = useRouter()
   const supabase = createClient()
+  const { setPinVerified } = useGroup()
   const [loading, setLoading] = useState(false)
   const [groupCode, setGroupCode] = useState("")
   const [pin, setPin] = useState("")
   const [foundGroup, setFoundGroup] = useState<{id: string, name: string} | null>(null)
   const [showPinInput, setShowPinInput] = useState(false)
-  const [displayName, setDisplayName] = useState("")
-  const [showNameInput, setShowNameInput] = useState(false)
-  const [selectedGroup, setSelectedGroup] = useState<{id: string, name: string} | null>(null)
 
   const handleFindGroup = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -102,6 +101,7 @@ export default function JoinGroupPage() {
           .single()
 
         if (existingMember) {
+          setPinVerified(group.id)
           router.push(`/groups/${group.id}`)
           router.refresh()
           setLoading(false)
@@ -123,95 +123,37 @@ export default function JoinGroupPage() {
           return
         }
 
+        setPinVerified(group.id)
         toast.success(`Joined ${group.name}!`)
         router.push(`/groups/${group.id}`)
         router.refresh()
       } else {
-        // Guest user - ask for display name
-        setSelectedGroup(group)
-        setShowPinInput(false)
-        setShowNameInput(true)
-        setLoading(false)
+        // Guest user - join straightaway without requiring name
+        const guestId = `guest_${Date.now()}`
+
+        const { error: memberError } = await supabase
+          .from("group_members")
+          .insert({
+            group_id: group.id,
+            user_id: guestId,
+            display_name: "Guest",
+          })
+
+        if (memberError) {
+          toast.error(memberError.message)
+          setLoading(false)
+          return
+        }
+
+        setPinVerified(group.id)
+        toast.success(`Joined ${group.name}!`)
+        router.push(`/groups/${group.id}`)
+        router.refresh()
       }
     } catch (error) {
       toast.error("Failed to join group")
       setLoading(false)
     }
-  }
-
-  const handleGuestJoin = async () => {
-    if (!selectedGroup || !displayName.trim()) {
-      toast.error("Please enter your name")
-      return
-    }
-
-    setLoading(true)
-
-    try {
-      // Generate a guest ID
-      const guestId = `guest_${Date.now()}`
-
-      const { error: memberError } = await supabase
-        .from("group_members")
-        .insert({
-          group_id: selectedGroup.id,
-          user_id: guestId,
-          display_name: displayName.trim(),
-        })
-
-      if (memberError) {
-        toast.error(memberError.message)
-        setLoading(false)
-        return
-      }
-
-      toast.success(`Joined ${selectedGroup.name}!`)
-      router.push(`/groups/${selectedGroup.id}`)
-      router.refresh()
-    } catch (error) {
-      toast.error("Failed to join group")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  if (showNameInput && selectedGroup) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4 pt-16">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <div className="flex items-center gap-2 mb-2">
-              <Button variant="ghost" size="sm" className="p-0 h-8 w-8" onClick={() => {
-                setShowNameInput(false)
-                setShowPinInput(true)
-                setSelectedGroup(null)
-              }}>
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <CardTitle>Your Name</CardTitle>
-            </div>
-            <CardDescription>Enter your name to join {selectedGroup.name}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="displayName">Display Name</Label>
-                <Input
-                  id="displayName"
-                  placeholder="Enter your name"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  required
-                />
-              </div>
-              <Button onClick={handleGuestJoin} className="w-full" disabled={loading}>
-                {loading ? "Joining..." : "Join Group"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
   }
 
   if (showPinInput && foundGroup) {

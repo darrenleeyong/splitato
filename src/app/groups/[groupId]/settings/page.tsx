@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { ArrowLeft, Trash2, UserPlus, Shield, Copy, Check, Pencil, Plus, X, Eye, EyeOff, AlertTriangle, RefreshCw, Home } from "lucide-react"
+import { ArrowLeft, Trash2, UserPlus, Shield, Copy, Check, Pencil, Plus, X, Eye, EyeOff, AlertTriangle, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { CURRENCIES } from "@/lib/constants"
 import { useGroup } from "@/hooks/useGroup"
@@ -59,7 +59,6 @@ export default function SettingsPage() {
   const [needsPinVerification, setNeedsPinVerification] = useState<boolean | null>(null)
   const [verifyingPin, setVerifyingPin] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [loadingTimeout, setLoadingTimeout] = useState(false)
   const [pinInput, setPinInput] = useState("")
   const [group, setGroup] = useState<Group | null>(null)
   const [members, setMembers] = useState<GroupMember[]>([])
@@ -106,11 +105,6 @@ export default function SettingsPage() {
   }, [groupId, isPinVerified])
 
   const checkPinAndLoad = async () => {
-    // Set a timeout to show error message if loading takes too long (5 minutes)
-    const timeoutId = setTimeout(() => {
-      setLoadingTimeout(true)
-    }, 300000) // 5 minutes
-
     try {
       // First check if the group has a PIN and get basic info
       const { data: groupData, error: groupError } = await supabase
@@ -122,7 +116,6 @@ export default function SettingsPage() {
       setGroup(groupData as Group | null)
 
       if (groupError) {
-        clearTimeout(timeoutId)
         setError("Failed to load group. The group may not exist or you may not have access.")
         setLoading(false)
         return
@@ -130,7 +123,6 @@ export default function SettingsPage() {
 
       // If no PIN is set, allow access
       if (!groupData?.pin_code) {
-        clearTimeout(timeoutId)
         setNeedsPinVerification(false)
         return
       }
@@ -140,11 +132,9 @@ export default function SettingsPage() {
       if (isPinVerified(groupId)) {
         fetchData()
       } else {
-        clearTimeout(timeoutId)
         setLoading(false)
       }
     } catch (err) {
-      clearTimeout(timeoutId)
       setError("An unexpected error occurred. Please try again.")
       setLoading(false)
     }
@@ -518,48 +508,6 @@ export default function SettingsPage() {
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to Group
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  // Show loading timeout message
-  if (loadingTimeout) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900/20">
-              <AlertTriangle className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
-            </div>
-            <CardTitle className="text-gray-900 dark:text-white">Loading Taking Too Long</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-center text-gray-500 dark:text-gray-400">
-              The page is taking longer than expected to load. This might be due to network issues.
-            </p>
-            <div className="flex flex-col gap-2">
-              <Button
-                onClick={() => {
-                  setLoadingTimeout(false)
-                  setLoading(true)
-                  checkPinAndLoad()
-                }}
-                className="w-full bg-[#1A1A1A] hover:bg-[#2D2D2D] dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Try Again
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => router.push("/")}
-                className="w-full dark:border-gray-600 dark:hover:bg-gray-800 dark:text-gray-200"
-              >
-                <Home className="mr-2 h-4 w-4" />
-                Go to Home
               </Button>
             </div>
           </CardContent>

@@ -54,7 +54,6 @@ export default function GroupDashboardPage() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [loadingTimeout, setLoadingTimeout] = useState(false)
   const [verifyingPin, setVerifyingPin] = useState(false)
   const [pinInput, setPinInput] = useState("")
   const [group, setGroup] = useState<Group | null>(null)
@@ -92,13 +91,6 @@ export default function GroupDashboardPage() {
   const [settlementToDelete, setSettlementToDelete] = useState<Settlement | null>(null)
 
   useEffect(() => {
-    // Set a timeout to show error message if loading takes too long (5 minutes)
-    const timeoutId = setTimeout(() => {
-      if (loading) {
-        setLoadingTimeout(true)
-      }
-    }, 300000) // 5 minutes
-
     // Fetch basic group info for PIN screen
     fetchBasicGroupInfo()
 
@@ -107,8 +99,6 @@ export default function GroupDashboardPage() {
     } else {
       setLoading(false)
     }
-
-    return () => clearTimeout(timeoutId)
   }, [groupId, isPinVerified])
 
   const fetchBasicGroupInfo = async () => {
@@ -127,7 +117,6 @@ export default function GroupDashboardPage() {
   const fetchGroupData = async () => {
     setLoading(true)
     setError(null)
-    setLoadingTimeout(false)
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -307,19 +296,43 @@ export default function GroupDashboardPage() {
       return
     }
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    const { error } = await supabase.from("group_members").insert({
-      group_id: groupId,
-      user_id: user?.id || `temp_${Date.now()}`,
-      display_name: addMemberInput.trim()
-    })
-    if (error) {
-      toast.error(error.message)
-    } else {
-      toast.success("Member added")
-      setIsAddMemberOpen(false)
-      setAddMemberInput("")
-      fetchGroupData()
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const userId = user?.id || `temp_${Date.now()}_${Math.random().toString(36).substring(7)}`
+      
+      // Check if member already exists
+      const { data: existingMember } = await supabase
+        .from("group_members")
+        .select("id")
+        .eq("group_id", groupId)
+        .eq("user_id", userId)
+        .maybeSingle()
+      
+      if (existingMember) {
+        toast.error("You are already a member of this group")
+        setSaving(false)
+        return
+      }
+      
+      const { error } = await supabase.from("group_members").insert({
+        group_id: groupId,
+        user_id: userId,
+        display_name: addMemberInput.trim()
+      })
+      
+      if (error) {
+        console.error("Error adding member:", error)
+        toast.error(error.message)
+      } else {
+        toast.success("Member added")
+        setIsAddMemberOpen(false)
+        setAddMemberInput("")
+        fetchGroupData()
+      }
+    } catch (err) {
+      console.error("Exception adding member:", err)
+      toast.error("Failed to add member. Please try again.")
     }
     setSaving(false)
   }
@@ -461,47 +474,6 @@ export default function GroupDashboardPage() {
               <Button
                 onClick={() => {
                   setError(null)
-                  fetchGroupData()
-                }}
-                className="w-full bg-[#1A1A1A] hover:bg-[#2D2D2D] dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Try Again
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => router.push("/")}
-                className="w-full dark:border-gray-600 dark:hover:bg-gray-800 dark:text-gray-200"
-              >
-                <Home className="mr-2 h-4 w-4" />
-                Go to Home
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  // Show loading timeout message
-  if (loadingTimeout) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900/20">
-              <AlertTriangle className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
-            </div>
-            <CardTitle className="text-gray-900 dark:text-white">Loading Taking Too Long</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-center text-gray-500 dark:text-gray-400">
-              The page is taking longer than expected to load. This might be due to network issues.
-            </p>
-            <div className="flex flex-col gap-2">
-              <Button
-                onClick={() => {
-                  setLoadingTimeout(false)
                   fetchGroupData()
                 }}
                 className="w-full bg-[#1A1A1A] hover:bg-[#2D2D2D] dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
