@@ -47,7 +47,7 @@ export function Header() {
                   <Avatar className="size-6">
                     <AvatarImage src={user.user_metadata?.avatar_url} />
                     <AvatarFallback className="text-xs">
-                      {getInitials(user.email) || "U"}
+                      {getInitials(user.email ?? null) || "U"}
                     </AvatarFallback>
                   </Avatar>
                   Account
