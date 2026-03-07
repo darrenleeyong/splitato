@@ -35,7 +35,7 @@ export default function HomePage() {
             supabase.from("group_members").select("id").eq("group_id", group.id),
           ])
 
-          const totalSpent = (expensesRes.data || []).reduce((sum, e) => {
+          const totalSpent = (expensesRes.data || []).reduce((sum: number, e: { amount: number }) => {
             return sum + Number(e.amount)
           }, 0)
 

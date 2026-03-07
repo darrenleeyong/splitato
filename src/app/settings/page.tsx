@@ -129,8 +129,8 @@ export default function SettingsPage() {
     return null
   }
 
-  const userInitials = getInitials(user.email)
-  const avatarColor = getAvatarColor(user.email || "")
+  const userInitials = getInitials(user.email ?? null)
+  const avatarColor = getAvatarColor(user.email ?? "")
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-4 pt-16">

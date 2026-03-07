@@ -839,7 +839,7 @@ export default function GroupDashboardPage() {
                       variant="ghost"
                       size="sm"
                       className="h-6 px-2 text-xs font-mono text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-                      onClick={handleCopyCode}
+                      onClick={() => handleCopyCode()}
                       aria-label="Copy group code"
                     >
                       {copiedCode ? <Check className="h-3 w-3 text-green-500" /> : group.group_code}

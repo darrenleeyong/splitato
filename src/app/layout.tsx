@@ -13,6 +13,7 @@ const manrope = Manrope({
 })
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://splitato.com"),
   title: {
     default: "Splitato - Split Group Trip Expenses Easily",
     template: "%s | Splitato",
