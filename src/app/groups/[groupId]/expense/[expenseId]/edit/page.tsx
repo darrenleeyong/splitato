@@ -506,6 +506,35 @@ export default function EditExpensePage() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-gray-500 dark:text-gray-400">Date Created</Label>
+                  <p className="text-sm text-gray-900 dark:text-white font-mono">
+                    {expense?.created_at ? new Date(expense.created_at).toLocaleString("en-US", {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                      hour12: true,
+                    }) : "—"}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-gray-500 dark:text-gray-400">Last Modified</Label>
+                  <p className="text-sm text-gray-900 dark:text-white font-mono">
+                    {expense?.updated_at ? new Date(expense.updated_at).toLocaleString("en-US", {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                      hour12: true,
+                    }) : "—"}
+                  </p>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label>Receipt (optional)</Label>
                 <div className="flex items-center gap-4">

@@ -94,6 +94,7 @@ ALTER TABLE settlements ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Anyone can view groups" ON groups FOR SELECT USING (true);
 CREATE POLICY "Anyone can create groups" ON groups FOR INSERT WITH CHECK (true);
 CREATE POLICY "Anyone can update groups" ON groups FOR UPDATE USING (true);
+CREATE POLICY "Only owner can delete groups" ON groups FOR DELETE USING (owner_id = auth.uid()::text);
 
 CREATE POLICY "Anyone can view group members" ON group_members FOR SELECT USING (true);
 CREATE POLICY "Anyone can add members" ON group_members FOR INSERT WITH CHECK (true);

@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +14,7 @@ import { useGroup } from "@/hooks/useGroup"
 
 export default function JoinGroupPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
   const { setPinVerified } = useGroup()
   const [loading, setLoading] = useState(false)
@@ -22,13 +23,24 @@ export default function JoinGroupPage() {
   const [foundGroup, setFoundGroup] = useState<{id: string, name: string} | null>(null)
   const [showPinInput, setShowPinInput] = useState(false)
 
-  const handleFindGroup = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // Auto-fill group code from URL query param on mount
+  useEffect(() => {
+    const codeFromUrl = searchParams.get("code")
+    if (codeFromUrl) {
+      setGroupCode(codeFromUrl.toUpperCase())
+      // Automatically find the group
+      handleFindGroup(null, codeFromUrl.toUpperCase())
+    }
+  }, [searchParams])
+
+  const handleFindGroup = async (e: React.FormEvent | null, codeOverride?: string) => {
+    if (e) {
+      e.preventDefault()
+    }
     
-    const code = groupCode.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6)
+    const code = (codeOverride || groupCode).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6)
     
     if (code.length !== 6) {
-      toast.error("Group code must be exactly 6 characters")
       return
     }
 

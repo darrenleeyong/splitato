@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -30,7 +31,8 @@ export function Header() {
   return (
     <header className="bg-white border-b shadow-sm sticky top-0 z-50 dark:bg-gray-900 dark:border-gray-800">
       <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-        <Link href="/">
+        <Link href="/" className="flex items-center gap-2">
+          <Image src="/logo.png" alt="Splitato" width={32} height={32} className="h-8 w-8" />
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Splitato</h1>
         </Link>
         <div className="flex items-center gap-2">

@@ -74,6 +74,7 @@ export default function SettingsPage() {
   const [editingPin, setEditingPin] = useState(false)
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null)
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false)
+  const [showDeleteGroupDialog, setShowDeleteGroupDialog] = useState(false)
 
   const groupNameForm = useForm({
     resolver: zodResolver(groupNameSchema),
@@ -324,29 +325,6 @@ export default function SettingsPage() {
     }
   }
 
-  const handleToggleSimplifyDebts = async () => {
-    if (!group) return
-    setLoading(true)
-    try {
-      const { error } = await supabase
-        .from("groups")
-        .update({ simplify_debts: !group.simplify_debts })
-        .eq("id", groupId)
-
-      if (error) {
-        toast.error(error.message)
-        return
-      }
-
-      toast.success(group.simplify_debts ? "Simplify debts disabled" : "Simplify debts enabled")
-      fetchData()
-    } catch (error) {
-      toast.error("Failed to update setting")
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const handleUpdateMemberName = async (memberId: string) => {
     const data = memberNameForm.getValues()
     setLoading(true)
@@ -437,7 +415,7 @@ export default function SettingsPage() {
   }
 
   const handleDeleteGroup = async () => {
-    if (!confirm("Are you sure you want to delete this group? This action cannot be undone.")) {
+    if (!showDeleteGroupDialog) {
       return
     }
     setLoading(true)
@@ -458,6 +436,7 @@ export default function SettingsPage() {
       toast.error("Failed to delete group")
     } finally {
       setLoading(false)
+      setShowDeleteGroupDialog(false)
     }
   }
 
@@ -583,6 +562,31 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors">
+      {/* Delete Group Confirmation Dialog */}
+      <Dialog open={showDeleteGroupDialog} onOpenChange={setShowDeleteGroupDialog}>
+        <DialogContent className="dark:bg-gray-800 dark:border-gray-700">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900 dark:text-white">Delete Group</DialogTitle>
+            <DialogDescription className="dark:text-gray-400">
+              Are you sure you want to delete this group? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-3">
+            <p className="text-sm text-red-800 dark:text-red-200">
+              <strong>Warning:</strong> This will permanently delete the group, all members, expenses, and settlements. This action cannot be undone.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteGroupDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteGroup} disabled={loading}>
+              {loading ? "Deleting..." : "Delete Group"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <header className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4">
           <div className="flex items-center gap-3">
@@ -834,34 +838,6 @@ export default function SettingsPage() {
                 <p className="text-xs text-gray-500 dark:text-gray-400">Ask the owner to set a PIN</p>
               )}
             </div>
-
-            <Separator className="dark:border-gray-700" />
-
-            <div className="space-y-2">
-              <Label className="flex items-center justify-between text-gray-900 dark:text-white">
-                <span>Simplify Debts</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={group?.simplify_debts}
-                  onClick={handleToggleSimplifyDebts}
-                  disabled={loading}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-                    group?.simplify_debts ? "bg-primary" : "bg-gray-200 dark:bg-gray-700"
-                  }`}
-                >
-                  <span
-                    aria-hidden="true"
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                      group?.simplify_debts ? "translate-x-5" : "translate-x-0"
-                    }`}
-                  />
-                </button>
-              </Label>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                When enabled, simplifies debts to reduce the number of transfers needed (like Splitwise)
-              </p>
-            </div>
           </CardContent>
         </Card>
 
@@ -874,7 +850,7 @@ export default function SettingsPage() {
               <Button
                 variant="destructive"
                 className="w-full"
-                onClick={handleDeleteGroup}
+                onClick={() => setShowDeleteGroupDialog(true)}
                 disabled={loading}
               >
                 <Trash2 className="h-4 w-4 mr-2" />

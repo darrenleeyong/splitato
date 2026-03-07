@@ -89,6 +89,7 @@ export default function GroupDashboardPage() {
   const [selectedSettlement, setSelectedSettlement] = useState<Settlement | null>(null)
   const [showDeleteSettlementDialog, setShowDeleteSettlementDialog] = useState(false)
   const [settlementToDelete, setSettlementToDelete] = useState<Settlement | null>(null)
+  const [showDeleteGroupDialog, setShowDeleteGroupDialog] = useState(false)
 
   useEffect(() => {
     // Fetch basic group info for PIN screen
@@ -130,7 +131,7 @@ export default function GroupDashboardPage() {
       const [groupRes, membersRes, expensesRes, settlementsRes, splitsRes] = await Promise.all([
         supabase.from("groups").select("*").eq("id", groupId).single(),
         supabase.from("group_members").select("*").eq("group_id", groupId),
-        supabase.from("expenses").select("*").eq("group_id", groupId).order("date", { ascending: false }),
+        supabase.from("expenses").select("*").eq("group_id", groupId).order("created_at", { ascending: false }),
         supabase.from("settlements").select("*").eq("group_id", groupId).order("date", { ascending: false }),
         expenseIds.length > 0 
           ? supabase.from("expense_splits").select("*").in("expense_id", expenseIds)
@@ -269,6 +270,8 @@ export default function GroupDashboardPage() {
     } else {
       toast.success(group?.simplify_debts ? "Simplify debts disabled" : "Simplify debts enabled")
       fetchGroupData()
+      // Stay on balances tab
+      router.push(`/groups/${groupId}?tab=balances`)
     }
     setSaving(false)
   }
@@ -360,7 +363,7 @@ export default function GroupDashboardPage() {
   }
 
   const handleDeleteGroup = async () => {
-    if (!confirm("Are you sure you want to delete this group? This action cannot be undone.")) return
+    if (!showDeleteGroupDialog) return
     setSaving(true)
     const { error } = await supabase.from("groups").delete().eq("id", groupId)
     if (error) {
@@ -370,6 +373,7 @@ export default function GroupDashboardPage() {
       router.push("/")
     }
     setSaving(false)
+    setShowDeleteGroupDialog(false)
   }
 
   const handleDeleteSettlement = async () => {
@@ -400,11 +404,14 @@ export default function GroupDashboardPage() {
     setShowDeleteSettlementDialog(true)
   }
 
-  const handleCopyCode = async () => {
+  const handleCopyCode = async (copyFullUrl: boolean = false) => {
     if (group?.group_code) {
-      await navigator.clipboard.writeText(group.group_code)
+      const textToCopy = copyFullUrl 
+        ? `${typeof window !== "undefined" ? window.location.origin : ""}/join?code=${group.group_code}`
+        : group.group_code
+      await navigator.clipboard.writeText(textToCopy)
       setCopiedCode(true)
-      toast.success("Group code copied!")
+      toast.success(copyFullUrl ? "Invite link copied!" : "Group code copied!")
       setTimeout(() => setCopiedCode(false), 2000)
     }
   }
@@ -790,6 +797,31 @@ export default function GroupDashboardPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Delete Group Confirmation Dialog */}
+      <Dialog open={showDeleteGroupDialog} onOpenChange={setShowDeleteGroupDialog}>
+        <DialogContent className="dark:bg-gray-800 dark:border-gray-700">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900 dark:text-white">Delete Group</DialogTitle>
+            <DialogDescription className="dark:text-gray-400">
+              Are you sure you want to delete this group? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-3">
+            <p className="text-sm text-red-800 dark:text-red-200">
+              <strong>Warning:</strong> This will permanently delete the group, all members, expenses, and settlements. This action cannot be undone.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteGroupDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteGroup} disabled={saving}>
+              {saving ? "Deleting..." : "Delete Group"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <header className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4">
             <div className="flex items-center justify-between">
@@ -850,7 +882,7 @@ export default function GroupDashboardPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={handleCopyCode}
+                          onClick={() => handleCopyCode(true)}
                           aria-label="Copy invite link"
                         >
                           {copiedCode ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
@@ -1071,14 +1103,19 @@ export default function GroupDashboardPage() {
                                             </div>
                                           )}
                                         </div>
-                                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                                          {expensePayer?.display_name || "Unknown"} paid · {expense.split_type}
-                                          {perPersonAmount !== null && (
-                                            <span className="ml-1 text-gray-400 dark:text-gray-500">
-                                              ({getCurrencySymbol(expense.currency || "USD")}{perPersonAmount.toFixed(2)}/person)
-                                            </span>
-                                          )}
-                                        </p>
+                                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                                        {expensePayer?.display_name || "Unknown"} paid · {expense.split_type}
+                                        {perPersonAmount !== null && (
+                                          <span className="ml-1 text-gray-400 dark:text-gray-500">
+                                            ({getCurrencySymbol(expense.currency || "USD")}{perPersonAmount.toFixed(2)}/person)
+                                          </span>
+                                        )}
+                                        {expense.created_at && (
+                                          <span className="ml-1 text-gray-400 dark:text-gray-500">
+                                            · {new Date(expense.created_at).toLocaleTimeString("en-US", { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                          </span>
+                                        )}
+                                      </p>
                                       </div>
                                     </div>
                                     <div className="text-right shrink-0">
@@ -1181,60 +1218,162 @@ export default function GroupDashboardPage() {
               </CardContent>
             </Card>
 
-            {/* Simplified debts view - shows debts in default currency only */}
+            {/* Debts view - simplified or raw based on group setting */}
             <Card className="dark:bg-gray-800 dark:border-gray-700">
               <CardHeader>
-                <CardTitle className="text-gray-900 dark:text-white">Who Owes Whom</CardTitle>
-                <CardDescription className="dark:text-gray-400">Based on current balances (settlements included)</CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-gray-900 dark:text-white">Who Owes Whom</CardTitle>
+                    <CardDescription className="dark:text-gray-400">
+                      {group?.simplify_debts 
+                        ? "Simplified debts - minimum transfers needed" 
+                        : "Individual debts based on each expense"}
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {group?.simplify_debts ? "Simplified" : "Individual"}
+                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={group?.simplify_debts}
+                      onClick={handleToggleSimplifyDebts}
+                      disabled={saving}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                        group?.simplify_debts ? "bg-primary" : "bg-gray-200 dark:bg-gray-700"
+                      }`}
+                      aria-label="Toggle simplify debts"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          group?.simplify_debts ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 {(() => {
-                  // Show debts for each currency using net balances (includes settlements)
+                  // Show debts for each currency
                   return allCurrencies.map(currency => {
-                    // Create lists of debtors and creditors for this currency using net balances
-                    const debtors = netMemberBalances
-                      .filter(m => (m.balances[currency] || 0) < -0.01)
-                      .map(m => ({ member: m, amount: Math.abs(m.balances[currency]) }))
-                      .sort((a, b) => b.amount - a.amount)
+                    // When simplify_debts is OFF, show raw individual debts from expenses
+                    // When simplify_debts is ON, show simplified/minimized debts
                     
-                    const creditors = netMemberBalances
-                      .filter(m => (m.balances[currency] || 0) > 0.01)
-                      .map(m => ({ member: m, amount: m.balances[currency] }))
-                      .sort((a, b) => b.amount - a.amount)
+                    let debts: Array<{from: string, to: string, amount: number, fromId: string, toId: string}>
                     
-                    if (debtors.length === 0 || creditors.length === 0) {
-                      return null
-                    }
-                    
-                    // Calculate debts
-                    const debts: Array<{from: string, to: string, amount: number, fromId: string, toId: string}> = []
-                    let remainingDebtors = [...debtors]
-                    let remainingCreditors = [...creditors]
-                    
-                    while (remainingDebtors.length > 0 && remainingCreditors.length > 0) {
-                      const debtor = remainingDebtors[0]
-                      const creditor = remainingCreditors[0]
+                    if (!group?.simplify_debts) {
+                      // Raw unsimplified view: calculate individual debts from each expense
+                      const debtMap: Record<string, Record<string, number>> = {}
                       
-                      const amount = Math.min(debtor.amount, creditor.amount)
-                      
-                      if (amount > 0.01) {
-                        debts.push({
-                          from: debtor.member.display_name || "Guest",
-                          to: creditor.member.display_name || "Guest",
-                          amount,
-                          fromId: debtor.member.id,
-                          toId: creditor.member.id
+                      // Initialize debt map
+                      members.forEach(m => {
+                        debtMap[m.id] = {}
+                        members.forEach(m2 => {
+                          if (m.id !== m2.id) {
+                            debtMap[m.id][m2.id] = 0
+                          }
                         })
+                      })
+                      
+                      // Calculate debts from each expense
+                      expenses.forEach(expense => {
+                        const payerId = expense.payer_id
+                        const expenseCurrency = expense.currency || group?.default_currency || "USD"
+                        
+                        // Only process expenses in this currency
+                        if (expenseCurrency !== currency) return
+                        
+                        // Get splits for this expense
+                        const expenseSpecificSplits = expenseSplits.filter(s => s.expense_id === expense.id)
+                        const expenseAmount = Number(expense.amount)
+                        
+                        if (expenseSpecificSplits.length > 0) {
+                          // Use recorded splits
+                          expenseSpecificSplits.forEach(split => {
+                            if (split.member_id !== payerId) {
+                              debtMap[split.member_id][payerId] = (debtMap[split.member_id][payerId] || 0) + Number(split.amount)
+                            }
+                          })
+                        } else if (expense.split_type === "even") {
+                          // Even split
+                          const perPersonAmount = expenseAmount / members.length
+                          members.forEach(m => {
+                            if (m.id !== payerId) {
+                              debtMap[m.id][payerId] = (debtMap[m.id][payerId] || 0) + perPersonAmount
+                            }
+                          })
+                        }
+                        // For percentage/specific splits without records, skip (edge case)
+                      })
+                      
+                      // Convert to debts array (only include non-zero amounts)
+                      debts = []
+                      members.forEach(fromMember => {
+                        members.forEach(toMember => {
+                          if (fromMember.id !== toMember.id) {
+                            const amount = debtMap[fromMember.id]?.[toMember.id] || 0
+                            if (amount > 0.01) {
+                              debts.push({
+                                from: fromMember.display_name || "Guest",
+                                to: toMember.display_name || "Guest",
+                                amount,
+                                fromId: fromMember.id,
+                                toId: toMember.id
+                              })
+                            }
+                          }
+                        })
+                      })
+                    } else {
+                      // Simplified view - use greedy algorithm with net balances
+                      // Create lists of debtors and creditors for this currency using net balances
+                      const debtors = netMemberBalances
+                        .filter(m => (m.balances[currency] || 0) < -0.01)
+                        .map(m => ({ member: m, amount: Math.abs(m.balances[currency]) }))
+                        .sort((a, b) => b.amount - a.amount)
+                      
+                      const creditors = netMemberBalances
+                        .filter(m => (m.balances[currency] || 0) > 0.01)
+                        .map(m => ({ member: m, amount: m.balances[currency] }))
+                        .sort((a, b) => b.amount - a.amount)
+                      
+                      if (debtors.length === 0 || creditors.length === 0) {
+                        return null
                       }
                       
-                      debtor.amount -= amount
-                      creditor.amount -= amount
+                      // Calculate simplified debts using greedy algorithm
+                      debts = []
+                      let remainingDebtors = [...debtors]
+                      let remainingCreditors = [...creditors]
                       
-                      if (debtor.amount < 0.01) {
-                        remainingDebtors.shift()
-                      }
-                      if (creditor.amount < 0.01) {
-                        remainingCreditors.shift()
+                      while (remainingDebtors.length > 0 && remainingCreditors.length > 0) {
+                        const debtor = remainingDebtors[0]
+                        const creditor = remainingCreditors[0]
+                        
+                        const amount = Math.min(debtor.amount, creditor.amount)
+                        
+                        if (amount > 0.01) {
+                          debts.push({
+                            from: debtor.member.display_name || "Guest",
+                            to: creditor.member.display_name || "Guest",
+                            amount,
+                            fromId: debtor.member.id,
+                            toId: creditor.member.id
+                          })
+                        }
+                        
+                        debtor.amount -= amount
+                        creditor.amount -= amount
+                        
+                        if (debtor.amount < 0.01) {
+                          remainingDebtors.shift()
+                        }
+                        if (creditor.amount < 0.01) {
+                          remainingCreditors.shift()
+                        }
                       }
                     }
                     
@@ -1275,9 +1414,17 @@ export default function GroupDashboardPage() {
                   }).filter(Boolean)
                 })()}
                 {allCurrencies.every(currency => {
-                  const debtors = netMemberBalances.filter(m => (m.balances[currency] || 0) < -0.01)
-                  const creditors = netMemberBalances.filter(m => (m.balances[currency] || 0) > 0.01)
-                  return debtors.length === 0 || creditors.length === 0
+                  // Check based on current mode
+                  if (!group?.simplify_debts) {
+                    // For unsimplified, check if there are any expenses in this currency
+                    const hasExpenses = expenses.some(e => (e.currency || group?.default_currency || "USD") === currency)
+                    return !hasExpenses
+                  } else {
+                    // For simplified, check net balances
+                    const debtors = netMemberBalances.filter(m => (m.balances[currency] || 0) < -0.01)
+                    const creditors = netMemberBalances.filter(m => (m.balances[currency] || 0) > 0.01)
+                    return debtors.length === 0 || creditors.length === 0
+                  }
                 }) && (
                   <p className="text-gray-500 dark:text-gray-400 text-center py-4">All settled up!</p>
                 )}
