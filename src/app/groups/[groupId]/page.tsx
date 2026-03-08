@@ -404,10 +404,17 @@ export default function GroupDashboardPage() {
     setShowDeleteSettlementDialog(true)
   }
 
+  const getOrigin = () => {
+    if (typeof window !== "undefined") {
+      return window.location.origin
+    }
+    return process.env.NEXT_PUBLIC_APP_URL || ""
+  }
+
   const handleCopyCode = async (copyFullUrl: boolean = false) => {
     if (group?.group_code) {
       const textToCopy = copyFullUrl 
-        ? `${typeof window !== "undefined" ? window.location.origin : ""}/join?code=${group.group_code}`
+        ? `${getOrigin()}/join?code=${group.group_code}`
         : group.group_code
       await navigator.clipboard.writeText(textToCopy)
       setCopiedCode(true)
@@ -876,7 +883,7 @@ export default function GroupDashboardPage() {
                       <div className="flex gap-2">
                         <Input
                           readOnly
-                          value={`${typeof window !== "undefined" ? window.location.origin : ""}/join?code=${group?.group_code}`}
+                          value={`${getOrigin()}/join?code=${group?.group_code}`}
                           className="dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
                         />
                         <Button

@@ -79,14 +79,20 @@ export default function AddExpensePage() {
   const watchSplitType = watch("splitType")
   const watchPayerId = watch("payerId")
 
+  const [isInitialized, setIsInitialized] = useState(false)
+
   useEffect(() => {
     fetchGroupData()
   }, [])
 
   useEffect(() => {
-    if (members.length > 0 && watchSplitType === "even") {
-      const amount = Number(watchAmount) || 0
-      const includedCount = includedMembers.size
+    // Only recalculate if initialized and members are loaded
+    if (!isInitialized || members.length === 0) return
+    
+    const amount = Number(watchAmount) || 0
+    const includedCount = includedMembers.size
+    
+    if (watchSplitType === "even") {
       const evenAmount = includedCount > 0 ? amount / includedCount : 0
       const newSplits = members.map(m => ({
         memberId: m.id,
@@ -95,7 +101,33 @@ export default function AddExpensePage() {
       }))
       setValue("splits", newSplits)
     }
-  }, [members.length, watchAmount, watchSplitType, includedMembers, setValue])
+    // Also recalculate for percentage and specific when included members change
+    if (watchSplitType === "percentage") {
+      const evenPercentage = includedCount > 0 ? 100 / includedCount : 0
+      const newSplits = members.map(m => ({
+        memberId: m.id,
+        amount: includedMembers.has(m.id) ? (amount * evenPercentage / 100) : 0,
+        percentage: includedMembers.has(m.id) ? evenPercentage : 0,
+      }))
+      setValue("splits", newSplits)
+    }
+    if (watchSplitType === "specific") {
+      // For specific, just set amount to 0 for excluded members
+      const newSplits = members.map(m => ({
+        memberId: m.id,
+        amount: includedMembers.has(m.id) ? 0 : 0,
+        percentage: includedMembers.has(m.id) ? 0 : 0,
+      }))
+      setValue("splits", newSplits)
+    }
+  }, [members.length, watchAmount, watchSplitType, includedMembers, isInitialized])
+
+  // Mark as initialized after first render
+  useEffect(() => {
+    if (members.length > 0 && !isInitialized) {
+      setIsInitialized(true)
+    }
+  }, [members.length, isInitialized])
 
   const fetchGroupData = async () => {
     const [groupRes, membersRes] = await Promise.all([
@@ -387,22 +419,27 @@ export default function AddExpensePage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="currency">Currency</Label>
-                  <Select
-                    value={watch("currency")}
-                    onValueChange={(v) => setValue("currency", v)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {getGroupCurrencies().map((c) => (
-                        <SelectItem key={c.code} value={c.code}>
-                          {c.symbol} {c.code}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Currency</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {getGroupCurrencies().map((c) => (
+                      <button
+                        key={c.code}
+                        type="button"
+                        onClick={() => setValue("currency", c.code)}
+                        className={`
+                          flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all
+                          ${watch("currency") === c.code
+                            ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
+                            : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                          }
+                        `}
+                        aria-pressed={watch("currency") === c.code}
+                      >
+                        <span>{c.symbol}</span>
+                        <span>{c.code}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -418,28 +455,33 @@ export default function AddExpensePage() {
                     <p className="text-sm text-red-500">{errors.date.message}</p>
                   )}
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="payer">Paid By</Label>
-                  <Select
-                    value={watchPayerId}
-                    onValueChange={(v) => setValue("payerId", v)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select payer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {members.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          {m.display_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.payerId && (
-                    <p className="text-sm text-red-500">{errors.payerId.message}</p>
-                  )}
+              <div className="space-y-2">
+                <Label>Paid By</Label>
+                <div className="flex flex-wrap gap-2">
+                  {members.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setValue("payerId", m.id)}
+                      className={`
+                        flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all
+                        ${watchPayerId === m.id
+                          ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                        }
+                      `}
+                      aria-pressed={watchPayerId === m.id}
+                    >
+                      <MemberAvatar name={m.display_name} size="sm" />
+                      <span>{m.display_name}</span>
+                    </button>
+                  ))}
                 </div>
+                {errors.payerId && (
+                  <p className="text-sm text-red-500">{errors.payerId.message}</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -490,19 +532,30 @@ export default function AddExpensePage() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>Split Type</Label>
-                <Select
-                  value={watchSplitType}
-                  onValueChange={(v: "even" | "percentage" | "specific") => setValue("splitType", v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="even">Evenly</SelectItem>
-                    <SelectItem value="percentage">By Percentage</SelectItem>
-                    <SelectItem value="specific">Specific Amounts</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { value: "even", label: "Evenly", icon: "👥" },
+                    { value: "percentage", label: "By Percentage", icon: "📊" },
+                    { value: "specific", label: "Specific Amounts", icon: "💰" },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setValue("splitType", option.value as "even" | "percentage" | "specific")}
+                      className={`
+                        flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
+                        ${watchSplitType === option.value
+                          ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                        }
+                      `}
+                      aria-pressed={watchSplitType === option.value}
+                    >
+                      <span>{option.icon}</span>
+                      <span>{option.label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <Separator />
