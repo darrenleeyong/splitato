@@ -8,6 +8,13 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+
+const formatAmount = (amount: number): string => {
+  if (Number.isInteger(amount)) {
+    return amount.toString()
+  }
+  return amount.toFixed(2).replace(/\.?0+$/, "")
+}
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
@@ -632,7 +639,7 @@ export default function GroupDashboardPage() {
 
   // Format total string: "S$100.00 + ¥6700.00"
   const totalSpentText = Object.entries(totalByCurrency)
-    .map(([currency, amount]) => `${getCurrencySymbol(currency)}${amount.toFixed(2)}`)
+    .map(([currency, amount]) => `${getCurrencySymbol(currency)}${formatAmount(amount)}`)
     .join(" + ")
 
   // Group expenses by date
@@ -723,7 +730,7 @@ export default function GroupDashboardPage() {
                   <p className="text-sm text-gray-500 dark:text-gray-400">Amount</p>
                   <p className="text-xl font-bold text-gray-900 dark:text-white">
                     {getCurrencySymbol(group?.default_currency || "USD")}
-                    {Number(selectedSettlement.amount).toFixed(2)}
+                    {Number(selectedSettlement.amount).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                   </p>
                 </div>
                 <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
@@ -788,7 +795,7 @@ export default function GroupDashboardPage() {
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Settlement details:</p>
               <p className="text-gray-900 dark:text-white">
                 {members.find(m => m.id === settlementToDelete.sender_id)?.display_name} paid{" "}
-                {getCurrencySymbol(group?.default_currency || "USD")}{Number(settlementToDelete.amount).toFixed(2)} to{" "}
+                {getCurrencySymbol(group?.default_currency || "USD")}{formatAmount(Number(settlementToDelete.amount))} to{" "}
                 {members.find(m => m.id === settlementToDelete.receiver_id)?.display_name}
               </p>
             </div>
@@ -1019,11 +1026,11 @@ export default function GroupDashboardPage() {
           <TabsList className="grid w-full grid-cols-2 bg-gray-100 dark:bg-gray-800">
             <TabsTrigger value="expenses" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700 data-[state=active]:shadow-sm">
               <Receipt className="h-4 w-4" />
-              <span className="hidden sm:inline">Expenses</span>
+              <span>Expenses</span>
             </TabsTrigger>
             <TabsTrigger value="balances" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700 data-[state=active]:shadow-sm">
               <Wallet className="h-4 w-4" />
-              <span className="hidden sm:inline">Balances</span>
+              <span>Balances</span>
             </TabsTrigger>
           </TabsList>
 
@@ -1060,7 +1067,7 @@ export default function GroupDashboardPage() {
                   }, {} as Record<string, number>)
 
                   const dayTotalText = Object.entries(dayTotalByCurrency)
-                    .map(([currency, amount]) => `${getCurrencySymbol(currency)}${amount.toFixed(2)}`)
+                    .map(([currency, amount]) => `${getCurrencySymbol(currency)}${formatAmount(amount)}`)
                     .join(" + ")
 
                   return (
@@ -1096,16 +1103,22 @@ export default function GroupDashboardPage() {
                             return (
                               <div key={expense.id}>
                                 <Link href={`/groups/${groupId}/expense/${expense.id}/edit`}>
-                                  <div className="p-4 flex items-center gap-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
+                                  <div className="p-4 flex items-start gap-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
                                     <span className="text-2xl">{getCategoryEmoji(expense.description)}</span>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="font-medium text-gray-900 dark:text-white truncate">{expense.description}</p>
-                                      <div className="flex flex-col gap-1 mt-1">
-                                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                                    <div className="flex-1 min-w-0 space-y-2">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <p className="font-medium text-gray-900 dark:text-white truncate">{expense.description}</p>
+                                        <p className="font-semibold text-gray-900 dark:text-white shrink-0">
+                                          {getCurrencySymbol(expense.currency || "USD")}
+                                          {formatAmount(Number(expense.amount))}
+                                        </p>
+                                      </div>
+                                      <div className="flex items-center justify-between gap-2">
+                                        <p className="text-sm text-gray-500 dark:text-gray-400 w-full">
                                           {expensePayer?.display_name || "Unknown"} paid · {expense.split_type}
                                           {perPersonAmount !== null && (
                                             <span className="ml-1 text-gray-400 dark:text-gray-500">
-                                              ({getCurrencySymbol(expense.currency || "USD")}{perPersonAmount.toFixed(2)}/person)
+                                              ({getCurrencySymbol(expense.currency || "USD")}{formatAmount(perPersonAmount)}/person)
                                             </span>
                                           )}
                                           {expense.created_at && (
@@ -1114,6 +1127,25 @@ export default function GroupDashboardPage() {
                                             </span>
                                           )}
                                         </p>
+                                        {expense.receipt_url && (
+                                          <div 
+                                            className="shrink-0 cursor-pointer"
+                                            onClick={(e) => {
+                                              e.preventDefault()
+                                              e.stopPropagation()
+                                              setZoomedImageUrl(expense.receipt_url)
+                                              setShowImageZoom(true)
+                                            }}
+                                          >
+                                            <img
+                                              src={expense.receipt_url}
+                                              alt="Receipt"
+                                              className="h-10 w-10 object-cover rounded-md border border-gray-200 dark:border-gray-600"
+                                            />
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-2 flex-wrap">
                                         <div className="flex -space-x-2">
                                           {involvedMembers.slice(0, 5).map((member, i) => (
                                             <MemberAvatar 
@@ -1130,27 +1162,6 @@ export default function GroupDashboardPage() {
                                           )}
                                         </div>
                                       </div>
-                                    </div>
-                                    <div className="text-right shrink-0">
-                                      <p className="font-semibold text-gray-900 dark:text-white">
-                                        {getCurrencySymbol(expense.currency || "USD")}
-                                        {Number(expense.amount).toFixed(2)}
-                                      </p>
-                                      {expense.receipt_url && (
-                                        <div 
-                                          className="mt-1 cursor-pointer"
-                                          onClick={() => {
-                                            setZoomedImageUrl(expense.receipt_url)
-                                            setShowImageZoom(true)
-                                          }}
-                                        >
-                                          <img
-                                            src={expense.receipt_url}
-                                            alt="Receipt"
-                                            className="h-10 w-10 object-cover rounded-md border border-gray-200 dark:border-gray-600"
-                                          />
-                                        </div>
-                                      )}
                                     </div>
                                   </div>
                                 </Link>
@@ -1218,7 +1229,7 @@ export default function GroupDashboardPage() {
                                       ? "text-red-600 dark:text-red-400"
                                       : "text-gray-400 dark:text-gray-500"
                                 }`}>
-                                  {isPositive ? "+" : ""}{getCurrencySymbol(currency)}{balance.toFixed(2)}
+                                  {isPositive ? "+" : ""}{getCurrencySymbol(currency)}{formatAmount(balance)}
                                 </span>
                               </td>
                             )
@@ -1409,7 +1420,7 @@ export default function GroupDashboardPage() {
                               </div>
                               <div className="flex items-center gap-3">
                                 <span className="font-semibold text-gray-900 dark:text-white">
-                                  {getCurrencySymbol(currency)}{debt.amount.toFixed(2)}
+                                  {getCurrencySymbol(currency)}{formatAmount(debt.amount)}
                                 </span>
                                 <Link
                                   href={`/groups/${groupId}/settle?senderId=${debt.fromId}&receiverId=${debt.toId}&amount=${debt.amount}&currency=${currency}`}
@@ -1479,7 +1490,7 @@ export default function GroupDashboardPage() {
                           <div className="flex items-center gap-3">
                             <div className="text-right">
                               <span className="font-semibold text-gray-900 dark:text-white">
-                                {getCurrencySymbol(group?.default_currency || "USD")}{Number(settlement.amount).toFixed(2)}
+                                {getCurrencySymbol(group?.default_currency || "USD")}{formatAmount(Number(settlement.amount))}
                               </span>
                               <p className="text-xs text-gray-500 dark:text-gray-400">
                                 {new Date(settlement.date).toLocaleDateString()}
