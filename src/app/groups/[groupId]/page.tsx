@@ -414,7 +414,7 @@ export default function GroupDashboardPage() {
   const handleCopyCode = async (copyFullUrl: boolean = false) => {
     if (group?.group_code) {
       const textToCopy = copyFullUrl 
-        ? `${getOrigin()}/join?code=${group.group_code}`
+        ? `${getOrigin()}/groups/join?code=${group.group_code}`
         : group.group_code
       await navigator.clipboard.writeText(textToCopy)
       setCopiedCode(true)
@@ -866,8 +866,7 @@ export default function GroupDashboardPage() {
                     size="sm"
                     className="dark:border-gray-600 dark:hover:bg-gray-800 dark:text-gray-200"
                   >
-                    <Users className="h-4 w-4 mr-1" />
-                    People
+                    <Users className="h-4 w-4" />
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="dark:bg-gray-800 dark:border-gray-700">
@@ -880,21 +879,28 @@ export default function GroupDashboardPage() {
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <Label className="text-gray-900 dark:text-white">Invite Link</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          readOnly
-                          value={`${getOrigin()}/join?code=${group?.group_code}`}
-                          className="dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
-                        />
+                      <a
+                        href={`${getOrigin()}/groups/join?code=${group?.group_code}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-3 py-2 border rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm break-all"
+                      >
+                        <span className="flex-1">{`${getOrigin()}/groups/join?code=${group?.group_code}`}</span>
                         <Button
-                          variant="outline"
+                          type="button"
+                          variant="ghost"
                           size="sm"
-                          onClick={() => handleCopyCode(true)}
+                          className="shrink-0 h-8 w-8 p-0"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            handleCopyCode(true)
+                          }}
                           aria-label="Copy invite link"
                         >
                           {copiedCode ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                         </Button>
-                      </div>
+                      </a>
                     </div>
                     <Separator className="dark:border-gray-700" />
                     <div className="space-y-2">
@@ -1094,7 +1100,20 @@ export default function GroupDashboardPage() {
                                     <span className="text-2xl">{getCategoryEmoji(expense.description)}</span>
                                     <div className="flex-1 min-w-0">
                                       <p className="font-medium text-gray-900 dark:text-white truncate">{expense.description}</p>
-                                      <div className="flex items-center gap-2 mt-1">
+                                      <div className="flex flex-col gap-1 mt-1">
+                                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                                          {expensePayer?.display_name || "Unknown"} paid · {expense.split_type}
+                                          {perPersonAmount !== null && (
+                                            <span className="ml-1 text-gray-400 dark:text-gray-500">
+                                              ({getCurrencySymbol(expense.currency || "USD")}{perPersonAmount.toFixed(2)}/person)
+                                            </span>
+                                          )}
+                                          {expense.created_at && (
+                                            <span className="ml-1 text-gray-400 dark:text-gray-500">
+                                              · {new Date(expense.created_at).toLocaleTimeString("en-US", { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                            </span>
+                                          )}
+                                        </p>
                                         <div className="flex -space-x-2">
                                           {involvedMembers.slice(0, 5).map((member, i) => (
                                             <MemberAvatar 
@@ -1110,19 +1129,6 @@ export default function GroupDashboardPage() {
                                             </div>
                                           )}
                                         </div>
-                                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                                        {expensePayer?.display_name || "Unknown"} paid · {expense.split_type}
-                                        {perPersonAmount !== null && (
-                                          <span className="ml-1 text-gray-400 dark:text-gray-500">
-                                            ({getCurrencySymbol(expense.currency || "USD")}{perPersonAmount.toFixed(2)}/person)
-                                          </span>
-                                        )}
-                                        {expense.created_at && (
-                                          <span className="ml-1 text-gray-400 dark:text-gray-500">
-                                            · {new Date(expense.created_at).toLocaleTimeString("en-US", { hour: 'numeric', minute: '2-digit', hour12: true })}
-                                          </span>
-                                        )}
-                                      </p>
                                       </div>
                                     </div>
                                     <div className="text-right shrink-0">
