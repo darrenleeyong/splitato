@@ -458,7 +458,7 @@ export default function SettingsPage() {
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
+        <Card className="py-6 w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/20">
               <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
@@ -507,7 +507,7 @@ export default function SettingsPage() {
   if (needsPinVerification && !isPinVerified(groupId)) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
+        <Card className="py-6 w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
           <CardHeader>
             {group && (
               <div className="mb-2 text-center">
@@ -601,7 +601,7 @@ export default function SettingsPage() {
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-6">
-        <Card className="dark:bg-gray-800 dark:border-gray-700">
+        <Card className="py-6 dark:bg-gray-800 dark:border-gray-700">
           <CardHeader>
             <CardTitle className="text-gray-900 dark:text-white">Group Information</CardTitle>
           </CardHeader>
@@ -841,7 +841,7 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card className="dark:bg-gray-800 dark:border-gray-700 border-red-200 dark:border-red-900">
+        <Card className="py-6 dark:bg-gray-800 dark:border-gray-700 border-red-200 dark:border-red-900">
           <CardHeader>
             <CardTitle className="text-red-600 dark:text-red-400">Danger Zone</CardTitle>
           </CardHeader>

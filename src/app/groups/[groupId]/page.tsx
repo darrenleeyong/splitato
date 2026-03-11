@@ -433,7 +433,7 @@ export default function GroupDashboardPage() {
   if (!isPinVerified(groupId)) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
+        <Card className="py-6 w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
           <CardHeader>
             {groupBasicInfo && (
               <div className="mb-2 text-center">
@@ -482,7 +482,7 @@ export default function GroupDashboardPage() {
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
+        <Card className="py-6 w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/20">
               <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
@@ -1189,7 +1189,7 @@ export default function GroupDashboardPage() {
               </Link>
             </div>
 
-            <Card className="dark:bg-gray-800 dark:border-gray-700">
+            <Card className="py-6 dark:bg-gray-800 dark:border-gray-700">
               <CardHeader>
                 <CardTitle className="text-gray-900 dark:text-white">Current Balances</CardTitle>
                 <CardDescription className="dark:text-gray-400">Based on expenses (settlements included)</CardDescription>
@@ -1243,7 +1243,7 @@ export default function GroupDashboardPage() {
             </Card>
 
             {/* Debts view - simplified or raw based on group setting */}
-            <Card className="dark:bg-gray-800 dark:border-gray-700">
+            <Card className="py-6 dark:bg-gray-800 dark:border-gray-700">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
@@ -1455,7 +1455,7 @@ export default function GroupDashboardPage() {
               </CardContent>
             </Card>
 
-            <Card className="dark:bg-gray-800 dark:border-gray-700">
+            <Card className="py-6 dark:bg-gray-800 dark:border-gray-700">
               <CardHeader>
                 <CardTitle className="text-gray-900 dark:text-white">Settlement History</CardTitle>
               </CardHeader>

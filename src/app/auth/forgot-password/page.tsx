@@ -37,7 +37,7 @@ export default function ForgotPasswordPage() {
   if (emailSent) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 p-4 pt-16">
-        <Card className="w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
+        <Card className="py-6 w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-bold text-gray-900 dark:text-white">Check Your Email</CardTitle>
             <CardDescription className="dark:text-gray-400">
@@ -63,7 +63,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 p-4 pt-16">
-      <Card className="w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
+      <Card className="py-6 w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold text-gray-900 dark:text-white">Forgot Password</CardTitle>
           <CardDescription className="dark:text-gray-400">

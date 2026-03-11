@@ -100,7 +100,7 @@ export default function MyGroupsPage() {
           {groupsLoading ? (
             <p className="text-gray-500 dark:text-gray-400">Loading...</p>
           ) : localGroups.length === 0 ? (
-            <Card className="dark:bg-gray-800 dark:border-gray-700">
+            <Card className="py-6 dark:bg-gray-800 dark:border-gray-700">
               <CardContent className="py-8 text-center text-gray-500 dark:text-gray-400">
                 You haven&apos;t joined any groups yet.
               </CardContent>
@@ -109,7 +109,7 @@ export default function MyGroupsPage() {
             <div className="space-y-3">
               {localGroups.map((group) => (
                 <Link key={group.id} href={`/groups/${group.id}`}>
-                  <Card className="hover:shadow-md transition-shadow cursor-pointer dark:bg-gray-800 dark:border-gray-700">
+                  <Card className="py-6 hover:shadow-md transition-shadow cursor-pointer dark:bg-gray-800 dark:border-gray-700">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-base text-gray-900 dark:text-white">{group.name}</CardTitle>
                     </CardHeader>

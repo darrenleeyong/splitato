@@ -8,7 +8,7 @@ import Link from "next/link"
 export default function NotFound() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
+      <Card className="py-6 w-full max-w-md dark:bg-gray-800 dark:border-gray-700">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700">
             <AlertTriangle className="h-6 w-6 text-gray-600 dark:text-gray-300" />

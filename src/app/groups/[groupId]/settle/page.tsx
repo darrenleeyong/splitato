@@ -277,7 +277,7 @@ export default function PayBalancePage() {
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-6">
-        <Card>
+        <Card className="py-6">
           <CardHeader>
             <CardTitle>Record Payment</CardTitle>
             <CardDescription>Log a settlement payment</CardDescription>

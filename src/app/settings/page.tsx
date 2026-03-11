@@ -135,7 +135,7 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-4 pt-16">
       <div className="max-w-2xl mx-auto space-y-6">
-        <Card className="dark:bg-gray-800 dark:border-gray-700">
+        <Card className="py-6 dark:bg-gray-800 dark:border-gray-700">
           <CardHeader>
             <CardTitle className="text-gray-900 dark:text-white">Profile Settings</CardTitle>
             <CardDescription className="dark:text-gray-400">
@@ -191,7 +191,7 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card className="dark:bg-gray-800 dark:border-gray-700">
+        <Card className="py-6 dark:bg-gray-800 dark:border-gray-700">
           <CardHeader>
             <CardTitle className="text-gray-900 dark:text-white flex items-center gap-2">
               <KeyIcon className="size-5" />

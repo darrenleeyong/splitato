@@ -167,7 +167,7 @@ export default function CreateGroupPage() {
   if (step === "confirm") {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4 pt-16">
-        <Card className="w-full max-w-md">
+        <Card className="py-6 w-full max-w-md">
           <CardHeader>
             <div className="flex items-center gap-2 mb-2">
               <Button variant="ghost" size="sm" className="p-0 h-8 w-8" onClick={() => setStep("pin")}>
@@ -208,7 +208,7 @@ export default function CreateGroupPage() {
   if (step === "pin") {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4 pt-16">
-        <Card className="w-full max-w-md">
+        <Card className="py-6 w-full max-w-md">
           <CardHeader>
             <div className="flex items-center gap-2 mb-2">
               <Button variant="ghost" size="sm" className="p-0 h-8 w-8" onClick={() => setStep("details")}>
@@ -249,7 +249,7 @@ export default function CreateGroupPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4 pt-16">
-      <Card className="w-full max-w-md">
+      <Card className="py-6 w-full max-w-md">
         <CardHeader>
           <div className="flex items-center gap-2 mb-2">
             <Link href="/">

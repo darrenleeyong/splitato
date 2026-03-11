@@ -76,7 +76,7 @@ export default function HomePage() {
             <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">My Groups</h3>
             {groupsWithTotals.map((group) => (
               <Link key={group.id} href={`/groups/${group.id}`}>
-                <Card className="dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer py-3">
+                <Card className="py-3 dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex-1 min-w-0">

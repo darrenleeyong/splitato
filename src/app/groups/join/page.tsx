@@ -171,7 +171,7 @@ export default function JoinGroupPage() {
   if (showPinInput && foundGroup) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4 pt-16">
-        <Card className="w-full max-w-md">
+        <Card className="py-6 w-full max-w-md">
           <CardHeader>
             <div className="flex items-center gap-2 mb-2">
               <Button variant="ghost" size="sm" className="p-0 h-8 w-8" onClick={() => {
@@ -215,7 +215,7 @@ export default function JoinGroupPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4 pt-16">
-      <Card className="w-full max-w-md">
+      <Card className="py-6 w-full max-w-md">
         <CardHeader>
           <div className="flex items-center gap-2 mb-2">
             <Link href="/">

@@ -379,7 +379,7 @@ export default function AddExpensePage() {
 
       <main className="max-w-2xl mx-auto px-4 py-6">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          <Card>
+          <Card className="py-6">
             <CardHeader>
               <CardTitle>Expense Details</CardTitle>
             </CardHeader>
@@ -521,7 +521,7 @@ export default function AddExpensePage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="py-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calculator className="h-5 w-5" />
