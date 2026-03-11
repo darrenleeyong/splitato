@@ -860,7 +860,7 @@ export default function GroupDashboardPage() {
                     </Button>
                   )}
                 </div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <p className="text-sm font-semibold text-gray-500 dark:text-gray-400" style={{ fontFamily: "var(--font-lekton), monospace" }}>
                   {members.length} member{members.length !== 1 ? "s" : ""} · Group total: {totalSpentText}
                 </p>
               </div>
@@ -1114,7 +1114,7 @@ export default function GroupDashboardPage() {
                                         </p>
                                       </div>
                                       <div className="flex items-center justify-between gap-2">
-                                        <p className="text-sm text-gray-500 dark:text-gray-400 w-full">
+                                        <p className="text-sm font-semibold text-gray-500 dark:text-gray-400 w-full" style={{ fontFamily: "var(--font-lekton), monospace" }}>
                                           {expensePayer?.display_name || "Unknown"} paid · {expense.split_type}
                                           {perPersonAmount !== null && (
                                             <span className="ml-1 text-gray-400 dark:text-gray-500">

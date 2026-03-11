@@ -1,15 +1,23 @@
 import type { Metadata } from "next"
-import { Manrope } from "next/font/google"
+import { Archivo, Lekton } from "next/font/google"
 import "./globals.css"
 import { Toaster } from "@/components/ui/sonner"
 import { Providers } from "@/components/providers"
 import { Header } from "@/components/header"
 import { ThemeProvider } from "@/components/theme-provider"
 
-const manrope = Manrope({
-  variable: "--font-manrope",
+const archivo = Archivo({
+  variable: "--font-archivo",
   subsets: ["latin"],
-  weight: ["200", "300", "400", "500", "600", "700", "800"],
+  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
+  display: "swap",
+})
+
+const lekton = Lekton({
+  variable: "--font-lekton",
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  display: "swap",
 })
 
 export const metadata: Metadata = {
@@ -70,7 +78,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${manrope.variable} antialiased`}>
+      <body className={`${archivo.variable} ${lekton.variable} antialiased`}>
         <ThemeProvider
           defaultTheme="dark"
           enableSystem
@@ -80,6 +88,24 @@ export default function RootLayout({
           <Providers>
             <Header />
             {children}
+            <footer className="w-full py-6 px-4 text-center border-t border-gray-200 dark:border-gray-800">
+              <div className="max-w-4xl mx-auto">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {"Made by "}
+                  <a 
+                    href="http://darrenleeyong.com/" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-gray-700 dark:text-gray-300 hover:text-primary dark:hover:text-primary underline underline-offset-2"
+                  >
+                    Darren Lee
+                  </a>
+                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                  Last updated: Mar 2026
+                </p>
+              </div>
+            </footer>
             <Toaster />
           </Providers>
         </ThemeProvider>
