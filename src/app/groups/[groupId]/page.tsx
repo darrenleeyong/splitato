@@ -1493,7 +1493,17 @@ export default function GroupDashboardPage() {
                                 {getCurrencySymbol(group?.default_currency || "USD")}{formatAmount(Number(settlement.amount))}
                               </span>
                               <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {new Date(settlement.date).toLocaleDateString()}
+                                {settlement.created_at 
+                                  ? new Date(settlement.created_at).toLocaleString(undefined, { 
+                                      month: 'numeric', 
+                                      day: 'numeric', 
+                                      year: 'numeric',
+                                      hour: 'numeric',
+                                      minute: '2-digit',
+                                      hour12: true
+                                    })
+                                  : new Date(settlement.date).toLocaleDateString()
+                                }
                               </p>
                             </div>
                             <Button
