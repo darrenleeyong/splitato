@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS settlements (
     sender_id UUID NOT NULL REFERENCES group_members(id) ON DELETE CASCADE,
     receiver_id UUID NOT NULL REFERENCES group_members(id) ON DELETE CASCADE,
     amount DECIMAL(12, 2) NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'SGD',
     date DATE NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

@@ -594,16 +594,16 @@ export default function GroupDashboardPage() {
 
   // Process settlements ONLY in net balances (current balance = expenses only)
   settlements.forEach(settlement => {
-    const currency = group?.default_currency || "USD"
-    
+    const currency = settlement.currency || group?.default_currency || "USD"
+
     if (!netBalancesByCurrency[currency]) {
       netBalancesByCurrency[currency] = {}
       members.forEach(m => netBalancesByCurrency[currency][m.id] = 0)
     }
-    
+
     const senderBalance = netBalancesByCurrency[currency][settlement.sender_id] || 0
     const receiverBalance = netBalancesByCurrency[currency][settlement.receiver_id] || 0
-    
+
     // Sender paid money, so their debt decreases (balance increases towards positive)
     netBalancesByCurrency[currency][settlement.sender_id] = senderBalance + Number(settlement.amount)
     // Receiver received money, so what they're owed decreases (balance decreases towards negative)
@@ -795,7 +795,7 @@ export default function GroupDashboardPage() {
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Settlement details:</p>
               <p className="text-gray-900 dark:text-white">
                 {members.find(m => m.id === settlementToDelete.sender_id)?.display_name} paid{" "}
-                {getCurrencySymbol(group?.default_currency || "USD")}{formatAmount(Number(settlementToDelete.amount))} to{" "}
+                {getCurrencySymbol(settlementToDelete.currency || group?.default_currency || "USD")}{formatAmount(Number(settlementToDelete.amount))} to{" "}
                 {members.find(m => m.id === settlementToDelete.receiver_id)?.display_name}
               </p>
             </div>
@@ -1490,7 +1490,7 @@ export default function GroupDashboardPage() {
                           <div className="flex items-center gap-3">
                             <div className="text-right">
                               <span className="font-semibold text-gray-900 dark:text-white">
-                                {getCurrencySymbol(group?.default_currency || "USD")}{formatAmount(Number(settlement.amount))}
+                                {getCurrencySymbol(settlement.currency || group?.default_currency || "USD")}{formatAmount(Number(settlement.amount))}
                               </span>
                               <p className="text-xs text-gray-500 dark:text-gray-400">
                                 {settlement.created_at 

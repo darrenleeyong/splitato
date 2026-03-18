@@ -141,6 +141,7 @@ export interface Database {
           sender_id: string
           receiver_id: string
           amount: number
+          currency: string
           date: string
           created_at: string
         }
@@ -150,6 +151,7 @@ export interface Database {
           sender_id: string
           receiver_id: string
           amount: number
+          currency: string
           date: string
           created_at?: string
         }
@@ -159,6 +161,7 @@ export interface Database {
           sender_id?: string
           receiver_id?: string
           amount?: number
+          currency?: string
           date?: string
           created_at?: string
         }

@@ -14,13 +14,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft, DollarSign } from "lucide-react"
 import { toast } from "sonner"
-import { getCurrencySymbol } from "@/lib/constants"
+import { getCurrencySymbol, CURRENCIES } from "@/lib/constants"
 import type { Group, GroupMember, Expense, ExpenseSplit, Settlement } from "@/lib/supabase/types"
 
 const settlementSchema = z.object({
   senderId: z.string().min(1, "Payer is required"),
   receiverId: z.string().min(1, "Receiver is required"),
   amount: z.coerce.number().min(0.01, "Amount must be greater than 0"),
+  currency: z.string().min(1, "Currency is required"),
   date: z.string().min(1, "Date is required"),
 })
 
@@ -55,6 +56,7 @@ export default function PayBalancePage() {
       senderId: "",
       receiverId: "",
       amount: 0,
+      currency: "SGD",
       date: new Date().toISOString().split("T")[0],
     },
   })
@@ -62,6 +64,7 @@ export default function PayBalancePage() {
   const watchSenderId = watch("senderId")
   const watchReceiverId = watch("receiverId")
   const watchAmount = watch("amount")
+  const watchCurrency = watch("currency")
 
   useEffect(() => {
     fetchData()
@@ -81,7 +84,7 @@ export default function PayBalancePage() {
         setValue("receiverId", receiverId)
       }
       if (amount) {
-        setValue("amount", parseFloat(amount))
+        setValue("amount", Math.round(parseFloat(amount) * 100) / 100)
       }
     }
   }, [members, searchParams, setValue])
@@ -213,7 +216,7 @@ export default function PayBalancePage() {
     if (watchSenderId) {
       const owed = calculateOwedAmount(watchSenderId, receiverId)
       if (owed > 0.01) {
-        setValue("amount", owed)
+        setValue("amount", Math.round(owed * 100) / 100)
       }
     }
   }
@@ -224,7 +227,7 @@ export default function PayBalancePage() {
     if (watchReceiverId) {
       const owed = calculateOwedAmount(senderId, watchReceiverId)
       if (owed > 0.01) {
-        setValue("amount", owed)
+        setValue("amount", Math.round(owed * 100) / 100)
       } else {
         trigger("amount")
       }
@@ -242,6 +245,7 @@ export default function PayBalancePage() {
           sender_id: data.senderId,
           receiver_id: data.receiverId,
           amount: data.amount,
+          currency: data.currency,
           date: data.date,
         })
 
@@ -332,6 +336,28 @@ export default function PayBalancePage() {
                 </Select>
                 {errors.receiverId && (
                   <p className="text-sm text-red-500">{errors.receiverId.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="currency">Currency</Label>
+                <Select
+                  value={watchCurrency}
+                  onValueChange={(value) => setValue("currency", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select currency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CURRENCIES.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>
+                        {c.symbol} {c.code} - {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.currency && (
+                  <p className="text-sm text-red-500">{errors.currency.message}</p>
                 )}
               </div>
 
