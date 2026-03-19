@@ -1342,16 +1342,21 @@ export default function GroupDashboardPage() {
                           </td>
                           {allCurrencies.map(currency => {
                             const balance = member.balances[currency] || 0
-                            const isPositive = balance > 0.01
-                            const isNegative = balance < -0.01
+                            const isSignificant = Math.abs(balance) >= 0.05
+                            if (!isSignificant) {
+                              return (
+                                <td key={currency} className="text-right py-3 px-4">
+                                  <span className="text-gray-400 dark:text-gray-500">All settled 🎉</span>
+                                </td>
+                              )
+                            }
+                            const isPositive = balance > 0
                             return (
                               <td key={currency} className="text-right py-3 px-4">
                                 <span className={`font-semibold ${
                                   isPositive 
                                     ? "text-green-600 dark:text-green-400" 
-                                    : isNegative 
-                                      ? "text-red-600 dark:text-red-400"
-                                      : "text-gray-400 dark:text-gray-500"
+                                    : "text-red-600 dark:text-red-400"
                                 }`}>
                                   {isPositive ? "+" : ""}{getCurrencySymbol(currency)}{formatAmount(balance)}
                                 </span>
