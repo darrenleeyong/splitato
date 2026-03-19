@@ -1593,7 +1593,7 @@ export default function GroupDashboardPage() {
                   <p className="text-gray-500 dark:text-gray-400 text-center py-4">No settlements yet</p>
                 ) : (
                   <div className="space-y-3">
-                    {settlements.map(settlement => {
+                    {[...settlements].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map(settlement => {
                       const sender = members.find(m => m.id === settlement.sender_id)
                       const receiver = members.find(m => m.id === settlement.receiver_id)
                       return (
