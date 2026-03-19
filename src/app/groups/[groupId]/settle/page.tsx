@@ -76,7 +76,8 @@ export default function PayBalancePage() {
       const senderId = searchParams.get("senderId")
       const receiverId = searchParams.get("receiverId")
       const amount = searchParams.get("amount")
-      
+      const currency = searchParams.get("currency")
+
       if (senderId) {
         setValue("senderId", senderId)
       }
@@ -85,6 +86,9 @@ export default function PayBalancePage() {
       }
       if (amount) {
         setValue("amount", Math.round(parseFloat(amount) * 100) / 100)
+      }
+      if (currency) {
+        setValue("currency", currency)
       }
     }
   }, [members, searchParams, setValue])
@@ -325,11 +329,6 @@ export default function PayBalancePage() {
                       .map((m) => (
                       <SelectItem key={m.id} value={m.id}>
                         {m.display_name}
-                        {(balances[m.id] || 0) > 0.01 && (
-                          <span className="text-gray-500 dark:text-gray-400 ml-2">
-                            (owes {getCurrencySymbol(group?.default_currency || "USD")}{Math.abs(balances[m.id]).toFixed(2)})
-                          </span>
-                        )}
                       </SelectItem>
                     ))}
                   </SelectContent>

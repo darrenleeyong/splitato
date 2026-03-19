@@ -140,23 +140,7 @@ export default function JoinGroupPage() {
         router.push(`/groups/${group.id}`)
         router.refresh()
       } else {
-        // Guest user - join straightaway without requiring name
-        const guestId = `guest_${Date.now()}`
-
-        const { error: memberError } = await supabase
-          .from("group_members")
-          .insert({
-            group_id: group.id,
-            user_id: guestId,
-            display_name: "Guest",
-          })
-
-        if (memberError) {
-          toast.error(memberError.message)
-          setLoading(false)
-          return
-        }
-
+        // Guest user - don't add as member, just verify PIN and grant access
         setPinVerified(group.id)
         toast.success(`Joined ${group.name}!`)
         router.push(`/groups/${group.id}`)
