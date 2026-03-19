@@ -78,7 +78,18 @@ export default function HomePage() {
               <Link key={group.id} href={`/groups/${group.id}`}>
                 <Card className="py-3 dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer">
                   <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 overflow-hidden shrink-0">
+                        {group.avatar_url ? (
+                          <img
+                            src={group.avatar_url}
+                            alt={group.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-xl">👥</span>
+                        )}
+                      </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-gray-900 dark:text-white truncate">{group.name}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -88,7 +99,7 @@ export default function HomePage() {
                           {new Date(group.created_at).toLocaleDateString()}
                         </p>
                       </div>
-                      <ArrowRight className="h-4 w-4 text-gray-400 flex-shrink-0 ml-2" />
+                      <ArrowRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
                     </div>
                   </CardContent>
                 </Card>

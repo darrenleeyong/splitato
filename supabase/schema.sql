@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS groups (
     pin_code TEXT NOT NULL,
     owner_id TEXT NOT NULL,
     simplify_debts BOOLEAN DEFAULT false,
+    avatar_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

@@ -20,6 +20,7 @@ export interface Database {
           pin_code: string
           owner_id: string
           simplify_debts: boolean
+          avatar_url: string | null
           created_at: string
         }
         Insert: {
@@ -32,6 +33,7 @@ export interface Database {
           pin_code: string
           owner_id: string
           simplify_debts?: boolean
+          avatar_url?: string | null
           created_at?: string
         }
         Update: {
@@ -44,6 +46,7 @@ export interface Database {
           pin_code?: string
           owner_id?: string
           simplify_debts?: boolean
+          avatar_url?: string | null
           created_at?: string
         }
       }

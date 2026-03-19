@@ -9,7 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Plus, Users } from "lucide-react"
 import { useAuth } from "@/hooks/useAuth"
 import { useGroup } from "@/hooks/useGroup"
-import type { Group } from "@/lib/supabase/types"
+import type { Group, GroupMember } from "@/lib/supabase/types"
+import { MemberAvatar } from "@/components/ui/avatar"
 
 export default function MyGroupsPage() {
   const router = useRouter()
@@ -17,6 +18,8 @@ export default function MyGroupsPage() {
   const { groups, loading: groupsLoading, fetchGroups } = useGroup()
   const [localGroups, setLocalGroups] = useState<Group[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [memberCounts, setMemberCounts] = useState<Record<string, number>>({})
+  const supabase = createClient()
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -40,6 +43,31 @@ export default function MyGroupsPage() {
   useEffect(() => {
     setLocalGroups(groups)
   }, [groups])
+
+  useEffect(() => {
+    const fetchMemberCounts = async () => {
+      const counts: Record<string, number> = {}
+      await Promise.all(
+        groups.map(async (group) => {
+          const members = await getGroupMembers(group.id)
+          counts[group.id] = members.length
+        })
+      )
+      setMemberCounts(counts)
+    }
+
+    if (groups.length > 0) {
+      fetchMemberCounts()
+    }
+  }, [groups])
+
+  const getGroupMembers = async (groupId: string): Promise<GroupMember[]> => {
+    const { data } = await supabase
+      .from("group_members")
+      .select("*")
+      .eq("group_id", groupId)
+    return data || []
+  }
 
   if (authLoading) {
     return (
@@ -111,10 +139,40 @@ export default function MyGroupsPage() {
                 <Link key={group.id} href={`/groups/${group.id}`}>
                   <Card className="py-6 hover:shadow-md transition-shadow cursor-pointer dark:bg-gray-800 dark:border-gray-700">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-base text-gray-900 dark:text-white">{group.name}</CardTitle>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 overflow-hidden shrink-0">
+                          {group.avatar_url ? (
+                            <img
+                              src={group.avatar_url}
+                              alt={group.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-lg">👥</span>
+                          )}
+                        </div>
+                        <CardTitle className="text-base text-gray-900 dark:text-white">{group.name}</CardTitle>
+                      </div>
                     </CardHeader>
                     <CardContent className="pt-0">
-                      <p className="text-sm text-gray-500 dark:text-gray-400">{group.default_currency}</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          {new Date(group.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </p>
+                        <div className="flex items-center gap-1">
+                          <div className="flex -space-x-2">
+                            {Array.from({ length: Math.min(memberCounts[group.id] || 0, 3) }).map((_, i) => (
+                              <div
+                                key={i}
+                                className="w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-600 border-2 border-white dark:border-gray-800"
+                              />
+                            ))}
+                          </div>
+                          <span className="text-sm text-gray-500 dark:text-gray-400 ml-2">
+                            {memberCounts[group.id] || 0}
+                          </span>
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
                 </Link>

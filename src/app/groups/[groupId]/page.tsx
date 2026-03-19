@@ -97,6 +97,8 @@ export default function GroupDashboardPage() {
   const [showDeleteSettlementDialog, setShowDeleteSettlementDialog] = useState(false)
   const [settlementToDelete, setSettlementToDelete] = useState<Settlement | null>(null)
   const [showDeleteGroupDialog, setShowDeleteGroupDialog] = useState(false)
+  const [showAvatarDialog, setShowAvatarDialog] = useState(false)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
 
   useEffect(() => {
     // Fetch basic group info for PIN screen
@@ -381,6 +383,50 @@ export default function GroupDashboardPage() {
     }
     setSaving(false)
     setShowDeleteGroupDialog(false)
+  }
+
+  const handleAvatarClick = () => {
+    setAvatarPreview(group?.avatar_url || null)
+    setShowAvatarDialog(true)
+  }
+
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleAvatarSave = async () => {
+    if (!avatarPreview) return
+    setSaving(true)
+    const { error } = await supabase.from("groups").update({ avatar_url: avatarPreview }).eq("id", groupId)
+    if (error) {
+      toast.error(error.message)
+    } else {
+      toast.success("Group avatar updated")
+      setShowAvatarDialog(false)
+      fetchGroupData()
+    }
+    setSaving(false)
+  }
+
+  const handleAvatarRemove = async () => {
+    setSaving(true)
+    const { error } = await supabase.from("groups").update({ avatar_url: null }).eq("id", groupId)
+    if (error) {
+      toast.error(error.message)
+    } else {
+      toast.success("Group avatar removed")
+      setShowAvatarDialog(false)
+      setAvatarPreview(null)
+      fetchGroupData()
+    }
+    setSaving(false)
   }
 
   const handleDeleteSettlement = async () => {
@@ -836,6 +882,69 @@ export default function GroupDashboardPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Group Avatar Dialog */}
+      <Dialog open={showAvatarDialog} onOpenChange={setShowAvatarDialog}>
+        <DialogContent className="dark:bg-gray-800 dark:border-gray-700">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900 dark:text-white">Change Group Avatar</DialogTitle>
+            <DialogDescription className="dark:text-gray-400">
+              Choose an emoji or upload an image for your group
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex justify-center">
+              {avatarPreview ? (
+                <div className="relative">
+                  <img
+                    src={avatarPreview}
+                    alt="Group avatar preview"
+                    className="w-24 h-24 rounded-full object-cover border-2 border-gray-200 dark:border-gray-600"
+                  />
+                </div>
+              ) : (
+                <div className="w-24 h-24 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600">
+                  <span className="text-4xl">👥</span>
+                </div>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="avatar-upload" className="text-gray-900 dark:text-white">
+                Upload Image
+              </Label>
+              <Input
+                id="avatar-upload"
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarFileChange}
+                className="dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              />
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
+              Upload an image to use as the group avatar
+            </p>
+          </div>
+          <DialogFooter className="flex gap-2">
+            {group?.avatar_url && (
+              <Button
+                variant="outline"
+                onClick={handleAvatarRemove}
+                disabled={saving}
+                className="flex-1"
+              >
+                Remove
+              </Button>
+            )}
+            <Button
+              onClick={handleAvatarSave}
+              disabled={saving || !avatarPreview}
+              className="flex-1"
+            >
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <header className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4">
             <div className="flex items-center justify-between">
@@ -845,6 +954,21 @@ export default function GroupDashboardPage() {
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
               </Link>
+              <button
+                onClick={handleAvatarClick}
+                className="flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-800 border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary transition-colors overflow-hidden"
+                aria-label="Change group avatar"
+              >
+                {group?.avatar_url ? (
+                  <img
+                    src={group.avatar_url}
+                    alt={group.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-2xl">👥</span>
+                )}
+              </button>
               <div>
                 <div className="flex items-center gap-2">
                   <h1 className="text-xl font-bold text-gray-900 dark:text-white">{group?.name}</h1>
