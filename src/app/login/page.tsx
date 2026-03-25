@@ -17,7 +17,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [emailForMagicLink, setEmailForMagicLink] = useState("")
 
   const handleEmailSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -53,25 +52,6 @@ export default function LoginPage() {
     } else {
       router.push("/")
       router.refresh()
-    }
-    setLoading(false)
-  }
-
-  const handleMagicLink = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email: emailForMagicLink,
-      options: {
-        emailRedirectTo: `${location.origin}/auth/callback`,
-      },
-    })
-
-    if (error) {
-      toast.error(error.message)
-    } else {
-      toast.success("Check your email for the magic link!")
     }
     setLoading(false)
   }
@@ -159,33 +139,6 @@ export default function LoginPage() {
               </form>
             </TabsContent>
           </Tabs>
-
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t dark:border-gray-600" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white dark:bg-gray-800 px-2 text-gray-500 dark:text-gray-400">Or</span>
-            </div>
-          </div>
-
-          <form onSubmit={handleMagicLink}>
-            <div className="space-y-2">
-              <Label htmlFor="magic-email" className="text-gray-900 dark:text-white">Magic Link</Label>
-              <Input
-                id="magic-email"
-                type="email"
-                placeholder="you@example.com"
-                value={emailForMagicLink}
-                onChange={(e) => setEmailForMagicLink(e.target.value)}
-                required
-                className="dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder:text-gray-400"
-              />
-            </div>
-            <Button type="submit" variant="outline" className="w-full mt-4 dark:border-gray-600 dark:hover:bg-gray-700 dark:text-gray-200" disabled={loading}>
-              Send Magic Link
-            </Button>
-          </form>
         </CardContent>
       </Card>
     </div>
