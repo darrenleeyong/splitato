@@ -14,6 +14,7 @@ export const CURRENCIES = [
   { code: "PHP", name: "Philippine Peso", symbol: "₱" },
   { code: "IDR", name: "Indonesian Rupiah", symbol: "Rp" },
   { code: "VND", name: "Vietnamese Dong", symbol: "₫" },
+  { code: "NZD", name: "New Zealand Dollar", symbol: "NZ$" },
 ] as const
 
 export type CurrencyCode = typeof CURRENCIES[number]["code"]
